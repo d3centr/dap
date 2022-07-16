@@ -88,18 +88,21 @@ object Aggregate extends App with Spark {
             ubi_avg('totalFeesUsd).as("avgTotalFeesUsd"),
             quartile(2, doubleExpr("totalFeesUsd")).as("medTotalFeesUsd"))
             
-    def priceSeries =
-        Seq(sort_array(collect_list(struct('logId, 
-            'price0, 'price1, 
-            'priceDeltaPct0, 'priceDeltaPct1, 
-            'netAmount0, 'netAmount1,
-            'volume0, 'volume1,
-            $"baseAmounts.volume".as("baseVolume"), 
-            $"baseAmounts.volumeBis".as("baseVolumeBis")
-        ))).as("priceSeries"))
+    def price0Series =
+        Seq(sort_array(collect_list(struct('logId, 'time, 
+            'price0.as("price"), 'priceDeltaPct0.as("priceDeltaPct"),
+            'netAmount0.as("netAmount"), 'volume0.as("volume"),
+        ))).as("price0Series"))
+
+    def price1Series =
+        Seq(sort_array(collect_list(struct('logId, 'time, 
+            'price1.as("price"), 'priceDeltaPct1.as("priceDeltaPct"), 
+            'netAmount1.as("netAmount"), 'volume1.as("volume")
+        ))).as("price1Series"))
             
     def costSeries =
-        Seq(sort_array(collect_list(struct('logId,
+        Seq(sort_array(collect_list(struct('logId, 
+            'time,
             'usdAmounts("volume").as("volumeUsd"),
             'gas,
             ubim('gas.cast("string"), $"usdAmounts.tip").as("gasXTipUsd"),
@@ -127,7 +130,8 @@ object Aggregate extends App with Spark {
         "volumeBase", "volumeUsd",
         "avgVolumeBase", "avgVolumeUsd",
         "avgTotalFeesUsd",
-        "priceSeries", "costSeries",
+        "price0Series", "price1Series",
+        "costSeries",
         "priceDelta0", "priceDelta1",
         "priceRange0", "priceRange1"
     ).foldLeft(stats) ((df, c) => c match {
@@ -160,14 +164,17 @@ object Aggregate extends App with Spark {
         load(s"s3://$DeltaBucket/uniswap/rswaps").
         where('date === aggDate).
         withColumn("resolvedTip", ubi_resolve('tip).cast("double")).
-        groupBy('address, 'pool).
+        withColumn("time", 'timestamp.cast("timestamp")).
+        withColumn("pair", concat_ws("_", $"token0.symbol", $"token1.symbol")).
+        groupBy('address, 'pool, 'pair).
         agg(count("*").as("swapCount"),
             priceSummary ++
             volume ++
             ticks ++
             gas ++
             fees ++
-            priceSeries ++
+            price0Series ++
+            price1Series ++
             costSeries ++
             crossReferences
         : _*).higherLevelAggregates

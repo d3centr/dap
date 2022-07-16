@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: superset-dapp-install-
+  namespace: superset
+spec:
+  serviceAccountName: superset-dapp-installer 
+  entrypoint: superset
+  templates:
+  - name: superset
+    inputs:
+      parameters:
+      - name: dapp
+      - name: repo
+      - name: path
+      - name: branch
+      - name: kubectl
+    container:
+      image: "bitnami/kubectl:{{inputs.parameters.kubectl}}"
+      env:
+      - name: "{{inputs.parameters.dapp}}_DEPLOY_KEY"
+        valueFrom:
+          secretKeyRef:
+            name: "{{inputs.parameters.dapp}}-deploy-key"
+            key: key
+            optional: true
+      command: ["bash", "-c"]
+      args:
+      - kubectl exec -n superset svc/superset -- bash -c '
+            echo "'"${{inputs.parameters.dapp}}_DEPLOY_KEY"'" > /tmp/{{inputs.parameters.dapp}}-key;
+            chmod 400 /tmp/{{inputs.parameters.dapp}}-key
+        ';
+
+        kubectl exec -n superset svc/superset -- bash -c "
+            rm -rf /tmp/{{inputs.parameters.dapp}};
+
+            GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /tmp/{{inputs.parameters.dapp}}-key'
+            git clone --single-branch --depth 1 --branch {{inputs.parameters.branch}} 
+                {{inputs.parameters.repo}} /tmp/{{inputs.parameters.dapp}};
+
+            superset import-dashboards -u dap -p 
+                /tmp/{{inputs.parameters.dapp}}/{{inputs.parameters.path}}/superset/dashboards.zip
+        "
+

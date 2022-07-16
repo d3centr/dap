@@ -18,6 +18,7 @@ spec:
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:{{ .Values.tag }}-builder"
+        - "--cache=false"
         - "--build-arg=KUBECTL_VERSION"
         # pass KUBECTL_VERSION from global variables
         envFrom:
@@ -105,6 +106,7 @@ spec:
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:{{ .Values.tag }}"
+        - "--cache=false"
         resources:
           requests:
             cpu: 1200m

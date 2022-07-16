@@ -1,22 +1,19 @@
-FROM debian:buster-20220228-slim
+ARG DEBIAN_TAG
+FROM debian:$DEBIAN_TAG
 SHELL ["/bin/bash", "-o", "pipefail", "-e", "-u", "-x", "-c"]
 
-# Watch out https://docs.aws.amazon.com/eks/latest/userguide/dockershim-deprecation.html next upgrade.
-# Fluent Bit installation and parser configuration could be impacted:
-# - rbac.authorization.k8s.io/v1beta1 ClusterRole -> v1 in 1.22+
-# - rbac.authorization.k8s.io/v1beta1 ClusterRoleBinding -> v1 in v1.22+
-# - from k8s 1.23, change docker Parser to cri in input-kubernetes.conf of Fluent Bit configmap
-ARG EKSCTL_VERSION=0.86.0
-# Match k8s default version in eksctl with kubectl (one minor version difference with cluster tolerated).
-# 1. look for "DefaultVersion" (pkg/apis/eksctl.io/v1alpha5/types.go file) in github eksctl release commit
-# 2. pick matching kubectl version among tags https://github.com/kubernetes/kubectl/tags and set below
-ARG KUBECTL_VERSION=1.21.10
+ARG AWSCLI_VERSION
+ARG EKSCTL_VERSION
+ARG KUBECTL_VERSION
+ARG HELM_VERSION
+ARG ARGO_CD_VERSION
+ARG ARGO_WF_CHART_VERSION
 ENV KUBECTL_VERSION $KUBECTL_VERSION
 
 # gettext-base installs envsubst command
-RUN apt-get update && apt-get install -y curl unzip gettext-base && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl unzip gettext-base git && rm -rf /var/lib/apt/lists/*
 
-RUN curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip && \
+RUN curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64-$AWSCLI_VERSION.zip -o awscliv2.zip && \
     unzip awscliv2.zip && ./aws/install && rm awscliv2.zip
 ENV AWS_PAGER=
 
@@ -26,5 +23,14 @@ RUN curl -L https://github.com/weaveworks/eksctl/releases/download/v$EKSCTL_VERS
 RUN curl -LO https://dl.k8s.io/release/v$KUBECTL_VERSION/bin/linux/amd64/kubectl && \
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm kubectl
 
-RUN curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+RUN curl https://get.helm.sh/helm-v$HELM_VERSION-linux-amd64.tar.gz | tar xz -C /tmp && \
+    mv /tmp/linux-amd64/helm /usr/local/bin/helm && rm -r /tmp/linux-amd64 && \
+    helm repo add argo https://argoproj.github.io/argo-helm
+
+RUN WF_APP=`helm search repo argo-workflows --version $ARGO_WF_CHART_VERSION -o json | grep -oP '(?<=app_version":"v)[0-9.]+'` && \
+    curl -LO https://github.com/argoproj/argo-workflows/releases/download/v$WF_APP/argo-linux-amd64.gz && \
+    gunzip argo-linux-amd64.gz && chmod +x argo-linux-amd64 && mv ./argo-linux-amd64 /usr/local/bin/argo
+
+RUN curl -L -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/download/v$ARGO_CD_VERSION/argocd-linux-amd64 && \
+    chmod +x /usr/local/bin/argocd
 

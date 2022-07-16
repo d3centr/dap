@@ -36,7 +36,7 @@ kubectl apply view-last-applied configmap -n default env -o yaml | \
     kubectl apply -f -
 
 
-# Create sink bucket and docker registry.
+# Create sink bucket and docker registries.
 
 delta_bucket=$CLUSTER-$REGION-delta-$ACCOUNT
 aws s3api head-bucket --bucket $delta_bucket || aws s3 mb s3://$delta_bucket
@@ -45,6 +45,8 @@ echo "s3://$delta_bucket"
 spark_repo=$CLUSTER/spark
 aws ecr describe-repositories --repository-names $spark_repo ||
     aws ecr create-repository --repository-name $spark_repo
+aws ecr describe-repositories --repository-names $spark_repo/cache ||
+    aws ecr create-repository --repository-name $spark_repo/cache
 
 cat <<EOF | aws ecr put-lifecycle-policy --repository-name $spark_repo \
     --lifecycle-policy-text file:///dev/stdin
@@ -54,6 +56,25 @@ cat <<EOF | aws ecr put-lifecycle-policy --repository-name $spark_repo \
            "rulePriority": 1,
            "selection": {
                "tagStatus": "untagged",
+               "countType": "sinceImagePushed",
+               "countUnit": "days",
+               "countNumber": 30
+           },
+           "action": {
+               "type": "expire"
+           }
+       }
+   ]
+}
+EOF
+cat <<EOF | aws ecr put-lifecycle-policy --repository-name $spark_repo/cache \
+    --lifecycle-policy-text file:///dev/stdin
+{
+   "rules": [
+       {
+           "rulePriority": 1,
+           "selection": {
+               "tagStatus": "any",
                "countType": "sinceImagePushed",
                "countUnit": "days",
                "countNumber": 30

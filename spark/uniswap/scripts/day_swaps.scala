@@ -10,6 +10,7 @@ try {
     sql(s"""CREATE TABLE IF NOT EXISTS uniswap.day_swaps(
         `address` STRING,
         `pool` STRING,
+        `pair` STRING,
         `swapCount` BIGINT,
         `firstPrice0` DOUBLE,
         `firstPrice1` DOUBLE,
@@ -54,8 +55,31 @@ try {
         `medTotalFeePct` DOUBLE,
         `avgTotalFeesUsd` DOUBLE,
         `medTotalFeesUsd` DOUBLE,
-        `priceSeries` ARRAY<STRUCT<`logId`: DECIMAL(38,18), `price0`: DOUBLE, `price1`: DOUBLE, `priceDeltaPct0`: DOUBLE, `priceDeltaPct1`: DOUBLE, `netAmount0`: DOUBLE, `netAmount1`: DOUBLE, `volume0`: DOUBLE, `volume1`: DOUBLE, `baseVolume`: DOUBLE, `baseVolumeBis`: DOUBLE>>,
-        `costSeries` ARRAY<STRUCT<`logId`: DECIMAL(38,18), `volumeUsd`: DOUBLE, `gas`: BIGINT, `gasXTipUsd`: DOUBLE, `gasXBaseFeeUsd`: DOUBLE, `LPFeeUsd`: DOUBLE, `tipGwei`: DOUBLE, `baseFeeGwei`: DOUBLE, `totalFeePct`: DOUBLE>>,
+        `price0Series` ARRAY<STRUCT<
+            `logId`: DECIMAL(38,18), 
+            `time`: TIMESTAMP, 
+            `price`: DOUBLE, 
+            `priceDeltaPct`: DOUBLE, 
+            `netAmount`: DOUBLE, 
+            `volume`: DOUBLE>>,
+        `price1Series` ARRAY<STRUCT<
+            `logId`: DECIMAL(38,18), 
+            `time`: TIMESTAMP, 
+            `price`: DOUBLE, 
+            `priceDeltaPct`: DOUBLE, 
+            `netAmount`: DOUBLE, 
+            `volume`: DOUBLE>>,
+        `costSeries` ARRAY<STRUCT<
+            `logId`: DECIMAL(38,18),
+            `time`: TIMESTAMP,
+            `volumeUsd`: DOUBLE, 
+            `gas`: BIGINT, 
+            `gasXTipUsd`: DOUBLE, 
+            `gasXBaseFeeUsd`: DOUBLE, 
+            `LPFeeUsd`: DOUBLE, 
+            `tipGwei`: DOUBLE, 
+            `baseFeeGwei`: DOUBLE, 
+            `totalFeePct`: DOUBLE>>,
         `token0` STRUCT<`symbol`: STRING, `decimals`: DECIMAL(38,0), `address`: STRING>,
         `token1` STRUCT<`symbol`: STRING, `decimals`: DECIMAL(38,0), `address`: STRING>,
         `fee` BIGINT,
@@ -70,7 +94,7 @@ try {
         `volatility1` DOUBLE,
         `volatility` DOUBLE,
         `priceImpactPctFor1kUsd` DOUBLE) 
-        PARTITIONED BY (date STRING) 
+        PARTITIONED BY (`date` STRING) 
         STORED AS parquet
         LOCATION 's3a://${sys.env("DELTA_BUCKET")}/uniswap/agg'
     """)

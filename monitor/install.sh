@@ -4,11 +4,13 @@ source ../bootstrap/app-init.sh
 ETH_IP=`kubectl apply view-last-applied cm -n monitor env |
     awk '$1~/ETHEREUM_IP/{print $NF}'`
 
-argocd app create monitor \
+namespace=monitor
+argocd app create $namespace \
+    --upsert \
     --repo $DaP_REPO \
     --revision $DaP_BRANCH \
-    --path monitor \
-    --dest-namespace monitor \
+    --path $namespace \
+    --dest-namespace $namespace \
     --dest-server https://kubernetes.default.svc \
     --sync-policy $DaP_SYNC \
     --self-heal \

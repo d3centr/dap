@@ -19,10 +19,11 @@ spec:
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:base"
+        - "--cache=true"
         resources:
           requests:
             cpu: 1800m
-            memory: 6Gi
+            memory: 7Gi
         volumeMounts:
         - name: dockerfile
           mountPath: /mnt
@@ -45,7 +46,7 @@ data:
     FROM openjdk:11-jdk-slim AS dist
     ARG path=/tmp/spark-{{ .Values.sparkVersion }}
 
-    RUN apt update && apt install -y curl && rm -rf /var/cache/apt/*
+    RUN apt-get update && apt-get install -y curl && rm -rf /var/cache/apt/*
 
     RUN curl -L -o $path.tar.gz https://github.com/apache/spark/archive/v{{ .Values.sparkVersion }}.tar.gz && \
         tar xzvf $path.tar.gz -C /tmp

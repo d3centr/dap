@@ -6,13 +6,15 @@ if [ -z $cluster ]; then
     exit 1
 fi
 
+lib_path=../bootstrap/workflow/aws/lib
+source $lib_path/profile-configuration.sh
+source $lib_path/env.sh
+echo "DaP ~ deleting stateful Airflow resources tied to $cluster cluster in $REGION"
+
 echo "WARNING: historical s3 data, container images and dag run records will be erased." 
 read -p "Are you sure? Type YES to confirm or any character to exit: "
 
 if [[ $REPLY =~ ^YES$ ]]; then
-
-    source ../bootstrap/workflow/aws/lib/env.sh
-    echo "DaP ~ deleting stateful Airflow resources tied to $cluster cluster"
 
     airflow_bucket=$cluster-$REGION-airflow-$ACCOUNT
     data_bucket=$cluster-$REGION-data-$ACCOUNT

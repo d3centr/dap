@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
+
 source aws/lib/env.sh
+source ../DaP/load_ENV.sh
 
 ETHEREUM_CLIENT=dap-geth
 
@@ -55,12 +57,7 @@ fi
 ## Create Kubernetes cluster.
 echo "DaP ~ creating $new cluster"
 
-# Variables interpolated by envsubst in json policy must be exported beforehand, e.g. export new=color. 
-envsubst < aws/iam/node-policy.json | 
-    aws iam create-policy --policy-name $new-dap-node --policy-document file:///dev/stdin
-
 policies="
-
       attachPolicyARNs:
         - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
@@ -69,11 +66,40 @@ policies="
         - arn:aws:iam::$ACCOUNT:policy/$new-dap-node
       withAddonPolicies:
         autoScaler: true
-
 "
 
-cluster_definition="
+nodegroups=$({
+  read  # first read skips column headers
+  while IFS=';' read -r name types volume_size spot desired min max taint; do
+  # keep indentation to insert nodegroups into cluster_definition manifest
+  echo "
+  - name: $name-`[ $spot = true ] && echo spot || echo demand`-a
+    subnets: [$subnet_a]
+    instanceTypes: [$types]
+    # keep volumeSize > 8 to avoid NodeHasDiskPressure
+    volumeSize: $volume_size
+    spot: $spot
+    desiredCapacity: $desired
+    minSize: $min
+    maxSize: $max
+    # labels and taints must also be tagged to scale from 0
+    taints: `[ -z $taint ] && echo '[]' || echo \"
+      - key: $taint
+        value: exec
+        effect: NoSchedule
+    \"`
+    tags:
+      # trigger autoscaling from 0 with ephemeral storage request
+      # https://github.com/weaveworks/eksctl/issues/1571#issuecomment-785789833
+      # manual propagation to ASG still required: see after cluster creation
+      # confused follow up in https://github.com/weaveworks/eksctl/issues/5420
+      k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage: ${volume_size}Gi
+      `[ -z $taint ] || echo \"k8s.io/cluster-autoscaler/node-template/taint/$taint: 'exec:NoSchedule'\"`
+    iam: $policies
+  "
+done } < `env_file $DaP_ENV/cluster/nodegroups`)
 
+cluster_definition="
   apiVersion: eksctl.io/v1alpha5
   kind: ClusterConfig  
   metadata:
@@ -81,7 +107,6 @@ cluster_definition="
     region: $REGION
   iam:
     withOIDC: true
-
   vpc:
     subnets:
       public:
@@ -89,58 +114,14 @@ cluster_definition="
           id: $subnet_a
         subnet-b:
           id: $subnet_b
-
-  managedNodeGroups:
-
-  - name: large-spot-a
-    subnets: [$subnet_a]
-    # ARM64 architecture, e.g. m6g and m6gd instances, not supported in bitnami charts, yet: 
-    # see https://github.com/bitnami/charts/issues/7040.
-    instanceTypes: ['m5.large', 'm5d.large', 'm5n.large']
-    # keep volumeSize > 8 to avoid NodeHasDiskPressure
-    volumeSize: 16
-    spot: true
-    desiredCapacity: 1
-    minSize: 0
-    maxSize: 7
-    iam: $policies
-
-  - name: xlarge-spot-a
-    subnets: [$subnet_a]
-    instanceTypes: ['m5.xlarge', 'm5d.xlarge', 'm5n.xlarge']
-    volumeSize: 24
-    spot: true
-    desiredCapacity: 0
-    minSize: 0
-    maxSize: 4
-    tags:
-      # trigger autoscaling from 0 with ephemeral storage request
-      # https://github.com/weaveworks/eksctl/issues/1571#issuecomment-785789833
-      # manual propagation to ASG still required: see after cluster creation
-      k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage: 24Gi
-    iam: $policies
-
-  - name: rxlarge-spot-a
-    subnets: [$subnet_a]
-    instanceTypes: ['r5.xlarge', 'r5d.xlarge', 'r5n.xlarge']
-    volumeSize: 24
-    spot: true
-    desiredCapacity: 0
-    minSize: 0
-    maxSize: 5
-    # labels and taints must also be tagged to scale from 0
-    taints:
-      - key: spark
-        value: exec
-        effect: NoSchedule
-    tags:
-      k8s.io/cluster-autoscaler/node-template/taint/spark: 'exec:NoSchedule'
-      k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage: 24Gi
-    iam: $policies
-
+  managedNodeGroups: $nodegroups
 "
-
 echo "$cluster_definition" | eksctl create cluster -f /dev/stdin --dry-run
+
+# Variables interpolated by envsubst in json policy must be exported beforehand, e.g. export new=color. 
+envsubst < aws/iam/node-policy.json | 
+    aws iam create-policy --policy-name $new-dap-node --policy-document file:///dev/stdin
+
 echo "$cluster_definition" | eksctl create cluster -f /dev/stdin
 
 echo "DaP ~ tag propagation to autoscaling groups"
@@ -219,25 +200,16 @@ helm install \
     cluster-autoscaler ./aws/helm/cluster-autoscaler
 
 
-## Deploy metrics server (enables kubectl top command)
-
+## Deploy metrics server
 echo "DaP ~ metrics server deployment"
 
-# install before last version to avoid the edge case where latest tag release isn't available, yet
-ms_version=`curl -s https://api.github.com/repos/kubernetes-sigs/metrics-server/tags |
-    grep -oP '(?<="name": "v)[0-9.]+' |
-    head -2 | tail -1`
-
-kubectl apply \
-    -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v$ms_version/components.yaml
+ms_releases=https://github.com/kubernetes-sigs/metrics-server/releases
+: ${DaP_METRICS_SERVER:=`env_path $DaP_ENV/version/METRICS_SERVER`}
+kubectl apply -f $ms_releases/download/v$DaP_METRICS_SERVER/components.yaml
 
 
-## Deploy Argo CD.
-echo "DaP ~ Argo CD deployment"
+## Deploy Argo CD and Workflows.
+echo "DaP ~ deployment of Argo CD & Workflows"
 ./argo/CD.sh $new
-
-
-## Delete previous cluster release, if any.
-echo "DaP ~ Deleting previous cluster release, if any."
-[ $old = none ] || aws/cleanup.sh $old-dap
+./argo/workflows.sh
 

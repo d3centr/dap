@@ -1,6 +1,9 @@
 # local override of default variables under DaP
 DaP/**/var
 
+# exclude files generated from versioned templates
+bootstrap/**/argo/kustomization.yaml
+
 # vim swap file
 *.swp
 

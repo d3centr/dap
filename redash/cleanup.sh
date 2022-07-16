@@ -6,13 +6,15 @@ if [ -z $cluster ]; then
     exit 1
 fi
 
+lib_path=../bootstrap/workflow/aws/lib
+source $lib_path/profile-configuration.sh
+source $lib_path/env.sh
+echo "DaP ~ deleting stateful Redash resources tied to $cluster cluster in $REGION"
+
 echo "WARNING: Redash dashboards and charts will be erased."
 read -p "Are you sure? Type YES to confirm or any character to exit: "
 
 if [[ $REPLY =~ ^YES$ ]]; then
-
-    source ../bootstrap/workflow/aws/lib/env.sh
-    echo "DaP ~ deleting stateful Redash resources tied to $cluster cluster"
 
     volume=$cluster-redash-postgresql-0
     pg_volume_id=`aws ec2 describe-volumes \

@@ -1,12 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 namespace: argocd
 # add ha in URL, i.e. manifests/ha/install, for high-availability setup (no need so far)
-# ! Last known version with working plugin environment variables: 2.3.5; 2.4.3 broken.
 resources:
-- https://raw.githubusercontent.com/argoproj/argo-cd/v2.3.5/manifests/install.yaml
-
+- namespace.yaml
+- https://raw.githubusercontent.com/argoproj/argo-cd/v$DaP_ARGO_CD/manifests/install.yaml
 patches:
   - target:
       group: apps
@@ -18,4 +16,3 @@ patches:
         path: /spec/template/spec/containers/0/command/-
         value: --disable-auth
   - path: plugin-patch.yaml
-

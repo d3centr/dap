@@ -36,6 +36,7 @@ p5="build.sparkVersion=$SPARK_VERSION"
 p6="postgresql.persistence.existingClaim=$PG_VOLUME"
 
 argocd app create $app \
+    --upsert \
     --repo $DaP_REPO \
     --revision $DaP_BRANCH \
     --path spark/$app \

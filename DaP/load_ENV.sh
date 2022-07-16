@@ -1,6 +1,7 @@
 #!/bin/bash
-set -eu
 
-env_path () { [ -f ../$1/var ] && cat ../$1/var || cat ../$1/default;}
-: ${DaP_ENV:=`env_path DaP/ENV`}
+env_path () { [ -f ../DaP/$1/var ] && cat ../DaP/$1/var || cat ../DaP/$1/default;}
+: ${DaP_ENV:=`env_path ENV`}
+
+env_file () { [ -f ../DaP/$1/var ] && echo ../DaP/$1/var || echo ../DaP/$1/default;}
 

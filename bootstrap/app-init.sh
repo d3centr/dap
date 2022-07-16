@@ -3,11 +3,11 @@ set -euo pipefail
 source ../DaP/load_ENV.sh
 
 env_branch () { 
-    local branch=`env_path DaP/$DaP_ENV/BRANCH`
+    local branch=`env_path $DaP_ENV/BRANCH`
     [ $branch = _local ] && git symbolic-ref HEAD --short || echo $branch
 }
-: ${DaP_REPO:=`env_path DaP/$DaP_ENV/REPO`}
-: ${DaP_SYNC:=`env_path DaP/$DaP_ENV/SYNC`}
+: ${DaP_REPO:=`env_path $DaP_ENV/REPO`}
+: ${DaP_SYNC:=`env_path $DaP_ENV/SYNC`}
 : ${DaP_BRANCH:=`env_branch`}
 
 # When both blue and green-dap run, the first cluster created is immutable. No reason to touch it.

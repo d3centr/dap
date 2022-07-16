@@ -1,14 +1,20 @@
 #!/bin/bash
+. ../DaP/load_ENV.sh
 
-lib_path=workflow/aws/lib
-source $lib_path/profile-configuration.sh
-source $lib_path/runtime.sh
-
-echo "DaP ~ building bootstrap environment"
-docker build -t dap-bootstrap .
+./runtime.sh build
+. runtime.sh
 
 echo "DaP ~ running deployment workflow"
 run_workflow dap-bootstrap aws/blue-green-deployment.sh
+exit_code=$?
+echo "DaP ~ deployment exit code: $exit_code"
 
-echo "DaP ~ deployment exit code: $?"
+# install apps
+[ $exit_code -eq 0 ] && {
+    : ${DaP_PACK:=`env_path $DaP_ENV/cluster/PACK`}
+    [ $DaP_PACK != none ] && {
+        echo "DaP ~ installing $DaP_PACK apps."
+        ./workflow/pack/$DaP_PACK.sh
+    }
+}
 

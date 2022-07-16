@@ -1,0 +1,45 @@
+superset:
+  image:
+    pullPolicy: Always
+  configOverrides:
+    jinja_template: |
+      FEATURE_FLAGS = {
+        "ENABLE_TEMPLATE_PROCESSING": True
+      } 
+  extraConfigs:
+    import_datasources.yaml: |
+        databases:
+        - database_name: Sparkubi
+          sqlalchemy_uri: hive://hive@sparkubi-thrift.spark.svc.cluster.local:10000
+  init:
+    # must match the user allocation of dashboards in dapp/superset/installer.yaml
+    adminUser:
+      username: dap
+      password: dap
+    initscript: |-
+      #!/bin/sh
+      set -eu
+      echo "Upgrading DB schema..."
+      superset db upgrade || {
+          # hard fix for missing ab_permission_view_role, can occur on new volumes
+          rm -r /app/superset/migrations
+          superset db init
+          superset db upgrade
+      }
+      echo "Initializing roles..."
+      superset init
+      {{ if .Values.init.createAdmin }}
+      echo "Creating admin user..."
+      superset fab create-admin \
+          --username {{ .Values.init.adminUser.username }} \
+          --firstname {{ .Values.init.adminUser.firstname }} \
+          --lastname {{ .Values.init.adminUser.lastname }} \
+          --email {{ .Values.init.adminUser.email }} \
+          --password {{ .Values.init.adminUser.password }} \
+          || true
+      {{- end }}
+      if [ -f "{{ .Values.extraConfigMountPath }}/import_datasources.yaml" ]; then
+        echo "Importing database connections.... "
+        superset import_datasources -p {{ .Values.extraConfigMountPath }}/import_datasources.yaml
+      fi
+  

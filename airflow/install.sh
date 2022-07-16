@@ -2,6 +2,7 @@
 source init.sh
 
 argocd app create airflow \
+    --upsert \
     --repo $DaP_REPO \
     --revision $DaP_BRANCH \
     --path airflow \

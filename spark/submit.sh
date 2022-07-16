@@ -16,7 +16,7 @@ args=()  # positional arguments
 while (( $# )); do
     case $1 in
         -c|--config) shift; config=$1;;
-        -h|--help) shift; help; exit;;
+        -h|--help) help; exit;;
         -*) echo "unknown $1 option" >&2; help; exit 1;;
         *) args+=( $1 );;
     esac
@@ -161,7 +161,7 @@ data:
         env: $env
         resources:
           requests:
-            ephemeral-storage: 6Gi
+            ephemeral-storage: 2Gi
       tolerations:
       - key: spark
         operator: Equal
@@ -202,7 +202,7 @@ spec:
         resources:
           requests:
             memory: 1Gi
-            cpu: 1
+            cpu: 800m
       volumes:
       - name: command
         configMap:
