@@ -37,14 +37,14 @@ done
 
 source ../DaP/load_ENV.sh
 parameter_file=`env_file $DaP_ENV/dapp/$dapp`
-[ $confirm = true ] && {
+if $confirm; then
     echo
     echo "DaP ~ $dapp ($app) will be installed on `kubectl config current-context`"
     echo "DaP ~ sourcing parameters from $parameter_file"
     cat $parameter_file
     read -p "Press enter to confirm or any character to cancel: "
     if [[ ! $REPLY =~ ^$ ]]; then echo "DaP ~ canceled pipeline installation"; exit 1; fi
-}
+fi
 
 [ $profile != hot ] && {
 # see https://github.com/argoproj/argo-workflows/blob/master/docs/workflow-rbac.md
@@ -87,4 +87,6 @@ argo submit $app/installer.yaml \
   --parameter-file $parameter_file \
   -p dapp=$dapp \
   -p kubectl=${DaP_KUBECTL:=`env_path $DaP_ENV/version/KUBECTL`}
+
+echo "run \"dap argo wait -n $app <Workflow Name>\" to return status on the cli"
 

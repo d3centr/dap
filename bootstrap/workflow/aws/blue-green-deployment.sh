@@ -1,56 +1,47 @@
 #!/bin/bash
 set -euo pipefail
 
-source aws/lib/env.sh
 source ../DaP/load_ENV.sh
+: ${DaP_INGRESS:=`env_path $DaP_ENV/cluster/INGRESS`}
+env_script=workflow/aws/lib/env.sh
+if $DaP_INGRESS; then . $env_script --dns; else . $env_script; fi
 
 ETHEREUM_CLIENT=dap-geth
-
 ETHEREUM_IP=`aws cloudformation list-exports \
     --query "Exports[?Name=='dap-network-eth-ip'].Value" \
     --output text`
 
 subnets=`aws cloudformation list-exports \
-    --query "Exports[?starts_with(Name, 'dap-network-subnet-')].[Name,Value]" \
+    --query "Exports[?starts_with(Name, 'dap-network-subnet-')].[Name, Value]" \
     --output text`
-subnet_a=`echo "$subnets" | awk '$1~/subnet-a$/{print $2}'`
-subnet_b=`echo "$subnets" | awk '$1~/subnet-b$/{print $2}'`
+subnet_a=`awk '$1~/a$/{print $2}' <<< "$subnets"`
+subnet_b=`awk '$1~/b$/{print $2}' <<< "$subnets"`
 
 
 ## Determine new cluster color according to blue-green deployment workflow.
 clusters=`eksctl get cluster`
 
 if echo $clusters | egrep -q 'No clusters? found'; then
-
     echo "DaP ~ no cluster found"
     old=none
     export new=blue
     other=green
-
 elif [ `echo "$clusters" | egrep 'blue-dap|green-dap' | wc -l` -gt 1 ]; then
-
     echo 'DaP ~ Skipping cluster creation: found more than a running colored cluster in region.'
     exit 1
-
 elif echo $clusters | grep -q blue-dap; then
-
     echo "DaP ~ blue cluster found"
     old=blue
     export new=green
     other=$old
-
 elif echo $clusters | grep -q green-dap; then
-
     echo "DaP ~ green cluster found"
     old=green
     export new=blue
     other=$old
-
 elif [ -z $new ]; then
-
     echo "DaP ~ Issue encountered determining new cluster color: debug if statements in $0."
     exit 1
-
 fi
 
 
@@ -63,7 +54,8 @@ policies="
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
         - arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess
-        - arn:aws:iam::$ACCOUNT:policy/$new-dap-node
+        - arn:aws:iam::$ACCOUNT:policy/$new-dap-node-$REGION
+        `$DaP_INGRESS && echo "- arn:aws:iam::$ACCOUNT:policy/$new-dap-dns-$REGION" || true`
       withAddonPolicies:
         autoScaler: true
 "
@@ -73,7 +65,7 @@ nodegroups=$({
   while IFS=';' read -r name types volume_size spot desired min max taint; do
   # keep indentation to insert nodegroups into cluster_definition manifest
   echo "
-  - name: $name-`[ $spot = true ] && echo spot || echo demand`-a
+  - name: $name-`$spot && echo spot || echo demand`-a
     subnets: [$subnet_a]
     instanceTypes: [$types]
     # keep volumeSize > 8 to avoid NodeHasDiskPressure
@@ -119,37 +111,10 @@ cluster_definition="
 echo "$cluster_definition" | eksctl create cluster -f /dev/stdin --dry-run
 
 # Variables interpolated by envsubst in json policy must be exported beforehand, e.g. export new=color. 
-envsubst < aws/iam/node-policy.json | 
-    aws iam create-policy --policy-name $new-dap-node --policy-document file:///dev/stdin
-
+envsubst < workflow/aws/iam/node-policy.json | aws iam create-policy \
+    --policy-name $new-dap-node-$REGION --policy-document file:///dev/stdin
+if $DaP_INGRESS; then ./workflow/aws/external-dns.sh policy $new $REGION; fi
 echo "$cluster_definition" | eksctl create cluster -f /dev/stdin
-
-echo "DaP ~ tag propagation to autoscaling groups"
-# required to scale from 0, could be automatically handled by AWS at some point
-# keep track of feature in parity with unmanaged nodegroups
-# https://eksctl.io/usage/eks-managed-nodes/#feature-parity-with-unmanaged-nodegroups
-
-asg_propagation_tags="
-    k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage
-"
-nodegroups=`aws eks list-nodegroups --cluster-name $new-dap --no-paginate \
-    --query nodegroups --output text`
-
-for ng in $nodegroups; do
-
-    asg=`aws eks describe-nodegroup --cluster-name $new-dap --nodegroup-name $ng \
-        --query nodegroup.resources.autoScalingGroups --output text`
-
-    ng_tags=`aws eks describe-nodegroup --cluster-name $new-dap --nodegroup-name $ng \
-        --query nodegroup.tags --output table | tr -d ' '`
-
-    for tag in $asg_propagation_tags; do
-        value=`echo "$ng_tags" | awk -F'|' '$2=="'$tag'"{print $3}'`
-        aws autoscaling create-or-update-tags --tags \
-            ResourceId=$asg,ResourceType=auto-scaling-group,Key=$tag,Value=$value,PropagateAtLaunch=true
-    done
-
-done
 
 # Create global variables.
 cat <<EOF | kubectl apply -f -
@@ -172,44 +137,34 @@ data:
 EOF
 
 
+echo "DaP ~ tag propagation to autoscaling groups"
+# required to scale from 0, could be automatically handled by AWS at some point?
+# keep track of feature in parity with unmanaged nodegroups + see comments in ng tags above
+# https://eksctl.io/usage/eks-managed-nodes/#feature-parity-with-unmanaged-nodegroups
+asg_propagation_keys="
+    k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage
+"
+./workflow/aws/asg-tag-propagation.sh $new $asg_propagation_keys
+
+
 ## Deploy cluster autoscaler.
 echo "DaP ~ autoscaler deployment"
-
-aws iam create-policy \
-    --policy-name $new-dap-cluster-autoscaler \
-    --policy-document file://aws/iam/cluster-autoscaler-policy.json
-
-eksctl create iamserviceaccount \
-    --cluster=$new-dap \
-    --namespace=kube-system \
-    --name=cluster-autoscaler \
-    --attach-policy-arn=arn:aws:iam::$ACCOUNT:policy/$new-dap-cluster-autoscaler \
-    --override-existing-serviceaccounts \
-    --approve
-
-cluster_version=`kubectl version --short=true | grep -oP '(?<=Server Version: v)[0-9]+\.[0-9]+'`
-autoscaler_version=`curl -s https://api.github.com/repos/kubernetes/autoscaler/tags?per_page=100 |
-    grep -oP "(?<=\"name\": \"cluster-autoscaler-)$cluster_version\.[0-9]+" |
-    head -1`
-
-# Do not add in application layer, e.g. Argo CD.
-# Autoscaler should be part of infrastructure layer for app dependencies on compute capacity.
-helm install \
-    --namespace kube-system \
-    --set clusterName=$new-dap,imageVersion=$autoscaler_version \
-    cluster-autoscaler ./aws/helm/cluster-autoscaler
+./workflow/aws/autoscaler.sh $new
 
 
-## Deploy metrics server
-echo "DaP ~ metrics server deployment"
-
-ms_releases=https://github.com/kubernetes-sigs/metrics-server/releases
-: ${DaP_METRICS_SERVER:=`env_path $DaP_ENV/version/METRICS_SERVER`}
-kubectl apply -f $ms_releases/download/v$DaP_METRICS_SERVER/components.yaml
+## Deploy ingress features.
+if $DaP_INGRESS; then
+    echo "DaP ~ deployment of Load Balancer Controller"
+    ./workflow/aws/load-balancer-controller.sh $new
+    echo "DaP ~ deployment of external DNS"
+    ./workflow/aws/external-dns.sh chart $new
+else
+    echo "DaP ~ external URL features are disabled in INGRESS configuration: skipping"
+fi
 
 
 ## Deploy Argo CD and Workflows.
 echo "DaP ~ deployment of Argo CD & Workflows"
-./argo/CD.sh $new
-./argo/workflows.sh
+./workflow/argo/CD.sh $new
+./workflow/argo/workflows.sh $new
 

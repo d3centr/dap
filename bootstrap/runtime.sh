@@ -1,9 +1,10 @@
 #!/bin/bash
 
-if [ $# -eq 0 ]; then
-    cmd=load
+# otherwise, pass first argument through when runtime.sh is sourced
+if [[ $# -gt 0 && $1 = build ]]; then
+    cmd=build
 else
-    cmd=$1
+    cmd=load
 fi
 case $cmd in
 
@@ -36,13 +37,6 @@ case $cmd in
         lib_path=`git rev-parse --show-toplevel`/bootstrap/workflow/aws/lib
         source $lib_path/profile-configuration.sh
         source $lib_path/runtime.sh
-
-    ;;
-
-    *) 
-
-        echo "single argument must be either 'build' or 'load'" >&2
-        exit 1
 
     ;;
 

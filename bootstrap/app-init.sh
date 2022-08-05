@@ -16,7 +16,9 @@ $root/bootstrap/workflow/aws/lib/authenticate_with_last_cluster_created.sh
 read REGION ACCOUNT CLUSTER <<< `kubectl config current-context | awk -F'[:/]' '{print $4,$5,$NF}'`
 REGISTRY=$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$CLUSTER
 
-export ARGOCD_OPTS='--port-forward-namespace argocd'
+# --plaintext disables TLS on client because it is disabled on server (configured on LB)
+# + kubectl port-forward goes through an encrypted TLS tunnel
+export ARGOCD_OPTS='--port-forward-namespace argocd --plaintext'
 # export variable referenced in envsubst pipes
 export REGION
 # prevent pre-install scripts from getting stuck on pagination in small terminal windows

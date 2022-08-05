@@ -14,7 +14,7 @@ By default, Argo CD will pull and apply live app changes from `https://github.co
 --------------------------------------------------------------------------------------------------
 
 *Optional*: to set up app installs from a private repo before a cluster bootstrap,\
-review configuration of `REPO/private/...` `PRIVATE` and `SSH_KEY_NAME` in [DaP](/DaP).\
+review configuration of `REPO/PRIVATE` and `.../SSH_KEY_NAME` in [DaP](/DaP).\
 You can always follow Argo CD [instructions](https://argo-cd.readthedocs.io/en/stable/user-guide/private-repositories/) to set up private repos later and manually.
 
 0. **Requirements**: admin rights in the cloud + a bash shell with docker and aws clis configured locally.\
@@ -33,7 +33,7 @@ If you do, you might also want to disable the automated installation of apps on 
 
 4. **Applications** to be installed on top of k8s are found in other modules. 3 scripts help to manage a release lifecycle from each top-level application folder. Make it your working directory to execute scripts:
 - `dap ./pre-install.sh` sets up dependencies and plugs in stateful resources that outlive a cluster.
-- `dap ./install.sh` delegates the job to Argo CD where you can follow in the UI (`localhost:8081` when redirecting port with `kubectl port-forward svc/argocd-server -n argocd 8081:443`).
+- `dap ./install.sh` delegates the job to Argo CD where you can follow in the UI - refer to App UI section in [client](/client).
 - `./cleanup.sh` is only called at your discretion to delete dependencies created by pre-install outside k8s.
 
 ### Example

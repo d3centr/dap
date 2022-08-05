@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  Domain:
+    Type: String
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+  SecurityMode:
+    Type: String
+    Description: advanced security mode
+    # OFF would be interpreted as false without quotes
+    Default: "OFF"
+    AllowedValues:
+      - AUDIT
+      - ENFORCED
+      - "OFF"
+Resources:
+  EmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties: 
+      EmailIdentity: !Ref Domain
+  EmailVerification:
+    Type: AWS::Route53::RecordSetGroup
+    Properties: 
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets: 
+        - Name: !GetAtt EmailIdentity.DkimDNSTokenName1
+          ResourceRecords: 
+            - !GetAtt EmailIdentity.DkimDNSTokenValue1
+          Type: CNAME
+          TTL: 60
+        - Name: !GetAtt EmailIdentity.DkimDNSTokenName2
+          ResourceRecords: 
+            - !GetAtt EmailIdentity.DkimDNSTokenValue2
+          Type: CNAME
+          TTL: 60
+        - Name: !GetAtt EmailIdentity.DkimDNSTokenName3
+          ResourceRecords: 
+            - !GetAtt EmailIdentity.DkimDNSTokenValue3
+          Type: CNAME
+          TTL: 60
+  Pool:
+    Type: AWS::Cognito::UserPool
+    Properties: 
+      AccountRecoverySetting: 
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig: 
+        AllowAdminCreateUserOnly: True
+      AutoVerifiedAttributes:
+        - email
+      EmailConfiguration: 
+        EmailSendingAccount: DEVELOPER
+        From: !Sub DaP Admin <dap@${Domain}>
+        SourceArn: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${Domain}
+      EnabledMfas: 
+        - SOFTWARE_TOKEN_MFA
+      MfaConfiguration: "ON"
+      Policies: 
+        PasswordPolicy:
+          MinimumLength: 8
+          TemporaryPasswordValidityDays: 90
+      UserAttributeUpdateSettings: 
+        AttributesRequireVerificationBeforeUpdate:
+          - email 
+      UsernameAttributes: 
+        - email
+      UserPoolAddOns: 
+        AdvancedSecurityMode: !Ref SecurityMode
+      UserPoolName: dap
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_LINK
+        EmailMessage: !Sub 'Click the link below to verify your DaP user address in ${AWS::Region} region. {####}'
+        EmailSubject: 'DaP ~ email verification'
+  SignInDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties: 
+      Domain: !Sub dap-${AWS::AccountId}
+      UserPoolId: !Ref Pool
+  Client:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Ref Domain
+      CallbackURLs:
+        - !Sub https://${Domain}/oauth2/idpresponse
+        - !Sub https://argo.${Domain}/oauth2/idpresponse
+        - !Sub https://argo2.${Domain}/oauth2/idpresponse
+        - !Sub https://cd.${Domain}/oauth2/idpresponse
+        - !Sub https://cd2.${Domain}/oauth2/idpresponse
+        - !Sub https://grafana.${Domain}/oauth2/idpresponse
+        - !Sub https://grafana2.${Domain}/oauth2/idpresponse
+        - !Sub https://superset.${Domain}/oauth2/idpresponse
+        - !Sub https://superset2.${Domain}/oauth2/idpresponse
+      DefaultRedirectURI: !Sub https://${Domain}/oauth2/idpresponse
+      LogoutURLs:
+        - https://start.duckduckgo.com
+      # when shorter, chart annotation alb.ingress.../auth-session-timeout takes precedence over token validity
+      # must be between 5 minutes and 1 day, cannot be greater than refresh token expiration
+      IdTokenValidity: 8
+      # idem
+      AccessTokenValidity: 8
+      # must be between 60 minutes and 10 years
+      RefreshTokenValidity: 8
+      TokenValidityUnits:
+          IdToken: hours
+          AccessToken: hours
+          RefreshToken: hours
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: True
+      AllowedOAuthScopes:
+        - openid
+      EnablePropagateAdditionalUserContextData: False
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+      GenerateSecret: True
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders:
+        - COGNITO
+      UserPoolId: !Ref Pool
+  RootCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      CertificateTransparencyLoggingPreference: ENABLED
+      DomainName: !Ref Domain
+      DomainValidationOptions:
+        - DomainName: !Ref Domain
+          HostedZoneId: !Ref HostedZoneId
+      ValidationMethod: DNS
+  PrefixCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      CertificateTransparencyLoggingPreference: ENABLED
+      DomainName: !Sub "*.${Domain}"
+      DomainValidationOptions:
+        - DomainName: !Sub "*.${Domain}"
+          HostedZoneId: !Ref HostedZoneId
+      ValidationMethod: DNS
+Outputs:
+  PoolId:
+    Value: !Ref Pool
+    Export:
+      Name: !Sub ${AWS::StackName}-pool
+  ClientId:
+    Value: !Ref Client
+    Export:
+      Name: !Sub ${AWS::StackName}-client
+  RootCert:
+    Value: !Ref RootCertificate
+    Export:
+      Name: !Sub ${AWS::StackName}-root-cert
+  SubCert:
+    Value: !Ref PrefixCertificate
+    Export:
+      Name: !Sub ${AWS::StackName}-sub-cert
+    

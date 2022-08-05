@@ -7,15 +7,14 @@ _Your launch base to engineer Web3 insights._
 
 ## Features
 - __Embedded Blockchain__ makes DaP self-sufficient.
-- __Data Pipeline__ from ingestion to vizualisation: you develop it, DaP builds and runs it.
+- __Data Pipelines__ from ingestion to vizualisation: you develop it, DaP builds and runs it.
 - __SQL Analytics__ powered by [SparkUBI](./spark/sparkubi): precise off-chain calculations at scale on Spark engine.
-- __Uniswap Integration__ for historicals of live token valuations in ETH and USD.
+- __Price Quotes__: Uniswap pipeline provides historicals of live token valuations in ETH and USD.
 
 ## Stack
 DaP runs in AWS on a Data Lakehouse architecture, enabling BI and ML on the same transactional system. Much of the development work has gone into the integration, specialization and automation of awesome open-source projects.
 
-- DaP has been made possible by [K8s](https://github.com/kubernetes/kubernetes), [Geth](https://github.com/ethereum/go-ethereum), [Uniswap](https://uniswap.org/), [Airflow](https://github.com/apache/airflow), [Spark](https://github.com/apache/spark) & [Superset](https://github.com/apache/superset). 
-
+- DaP has been made possible by [K8s](https://github.com/kubernetes/kubernetes), [Geth](https://github.com/ethereum/go-ethereum), [Uniswap](https://uniswap.org/), [Airflow](https://github.com/apache/airflow), [Spark](https://github.com/apache/spark) & [Superset](https://github.com/apache/superset).
 - It's been automated with tools like [CloudFormation](https://aws.amazon.com/cloudformation/), [eksctl](https://github.com/weaveworks/eksctl), [Argo CD](https://github.com/argoproj/argo-cd), [Kaniko](https://github.com/GoogleContainerTools/kaniko) & good old bash.
 
 *Note*: all sources used under their own respective licenses.

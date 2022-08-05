@@ -1,8 +1,6 @@
 #!/bin/bash
 source ../bootstrap/app-init.sh
-
-ETH_IP=`kubectl apply view-last-applied cm -n monitor env |
-    awk '$1~/ETHEREUM_IP/{print $NF}'`
+ETH_IP=`kubectl get cm env -n monitor -o "jsonpath={.data['ETHEREUM_IP']}"`
 
 namespace=monitor
 argocd app create $namespace \
