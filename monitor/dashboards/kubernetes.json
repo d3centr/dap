@@ -24,7 +24,7 @@
   "gnetId": 315,
   "graphTooltip": 0,
   "id": 4,
-  "iteration": 1660679049445,
+  "iteration": 1662987207887,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -496,7 +496,7 @@
       "type": "gauge"
     },
     {
-      "description": "storage devices > 0.2% usage",
+      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -567,7 +567,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "exemplar": false,
-          "expr": "container_fs_usage_bytes{id!=\"/\",kubernetes_io_hostname=~\"^$Node$\",namespace!=\"kube-system\"} / on(device, container, name, namespace) container_fs_limit_bytes{id!=\"/\",kubernetes_io_hostname=~\"^$Node$\",namespace!=\"kube-system\"} * 100 >= 0.2",
+          "expr": "container_fs_usage_bytes{id!=\"/\",kubernetes_io_hostname=~\"^$Node$\",namespace!=\"kube-system\"} / on(device, container, name, namespace) container_fs_limit_bytes{id!=\"/\",kubernetes_io_hostname=~\"^$Node$\",namespace!=\"kube-system\"} * 100 >= 1",
           "format": "time_series",
           "interval": "10s",
           "intervalFactor": 1,
@@ -575,6 +575,18 @@
           "metric": "",
           "refId": "A",
           "step": 10
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "exemplar": true,
+          "expr": "(kubelet_volume_stats_capacity_bytes{} - kubelet_volume_stats_available_bytes{}) / kubelet_volume_stats_capacity_bytes{} * 100",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "{{namespace}} pVc",
+          "refId": "B"
         }
       ],
       "title": "FS",
@@ -2211,7 +2223,7 @@
       {
         "allValue": ".*",
         "current": {
-          "selected": true,
+          "selected": false,
           "text": "All",
           "value": "$__all"
         },
@@ -2268,7 +2280,7 @@
   },
   "timezone": "browser",
   "title": "Kubernetes",
-  "uid": "DYr6lPiVz",
+  "uid": "CBDhfuM4k",
   "version": 1,
   "weekStart": ""
 }

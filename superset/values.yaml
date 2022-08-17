@@ -1,13 +1,23 @@
 superset:
   image:
+    tag: 2.0.0 
     pullPolicy: Always
-  service:
-    type: NodePort
   configOverrides:
+    disable_login: |
+      AUTH_ROLE_PUBLIC = 'Admin'
     jinja_template: |
       FEATURE_FLAGS = {
         "ENABLE_TEMPLATE_PROCESSING": True
       } 
+    custom_home: |
+      from flask import redirect
+      from flask_appbuilder import expose, IndexView
+      from superset.superset_typing import FlaskResponse
+      class SupersetDashboardIndexView(IndexView):
+          @expose("/")
+          def index(self) -> FlaskResponse:
+              return redirect("/dashboard/list")
+      FAB_INDEX_VIEW = f"{SupersetDashboardIndexView.__module__}.{SupersetDashboardIndexView.__name__}"
   extraConfigs:
     import_datasources.yaml: |
         databases:
@@ -22,7 +32,7 @@ superset:
       #!/bin/sh
       set -eu
       echo "Upgrading DB schema..."
-      superset db upgrade; echo "DB upgrade EXIT CODE: $?"
+      superset db upgrade || echo "DB upgrade EXIT CODE: $?"
       # TODO: catch the error code printed above for a safer "hard" fix if it occurs again
       # superset db upgrade || {
       #     # hard fix for missing ab_permission_view_role, can occur on new volumes

@@ -14,7 +14,7 @@ aws eks update-kubeconfig --name $color-dap
 helm repo add argo https://argoproj.github.io/argo-helm
 helm upgrade -i --namespace argo --create-namespace \
     --version $DaP_ARGO_WF_CHART \
-    --set server.serviceType=NodePort,server.extraArgs={--auth-mode=server} \
+    --set server.extraArgs={--auth-mode=server} \
     --set workflow.serviceAccount.create=true \
     wf argo/argo-workflows
 

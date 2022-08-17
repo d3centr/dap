@@ -1,6 +1,4 @@
-build:
+global:
   coldBuild: Skip
   hotBuild: Skip
-
-metadata: Skip
 

@@ -1,18 +1,22 @@
 ## Dependencies
 
-Superset depends on a metastore for table metadata and a Spark SQL server/cluster to execute queries.
+Superset depends on a metastore for table metadata and a Spark SQL server/cluster to execute queries.\
+These dependencies are provided by `spark/sparkubi` app.
+
+When automated installation of applications is disabled...
 
 *from spark directory*
-- install the Hive metastore in Sparkubi app:\
+- install Sparkubi app:\
  `./install.sh -a sparkubi -p skip` (skip profile excludes the build stage)
-- run Thrift server `./submit.sh sparkubi thrift`: light default resource configuration\
-or use config flag, e.g. `-c mining`, after `./submit.sh` to allocate more resources
 
-Resource configuration is loaded from a file name in `spark/sparkubi/config`.
+### Memory/CPUs/Executors
+Add `-c <config name>` above to set non-default resources loaded from `spark/sparkubi/config`.
+
+*Note*: when a new configuration is applied to a running sparkubi app, `sparkubi-thrift` job in `spark` namespace must then be deleted for changes to take effect. This will restart Spark Thrift Server through `sts-controller` in sparkubi chart.
 
 ## Dashboard export/import
 
-Note: export dashboards from cli to import from cli or stick to the UI to avoid incompatibilities.
+Export dashboards from cli to import from cli or stick to the UI to avoid incompatibilities.
 
 ### CLI export/import
 

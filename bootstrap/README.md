@@ -22,7 +22,7 @@ Run `aws configure` and specify region where DaP will be deployed or export `$AW
 
 1. Create **Network** and deploy **Geth** node in this order from [client](/client) folder.
 
-2. **K8s** provides computing capacity with autoscaling. Run `./deploy.sh` in this folder to create a cluster ready for applications. Process should take around 20 minutes. You can run `./destroy.sh` to delete the cluster when computation isn't required. Note: as a rule of thumb, state is externalized but applications are expected to be re-installed on any new cluster.
+2. **K8s** provides computing capacity with autoscaling. Run `./deploy.sh` in this folder to create a cluster ready for applications. Process should take around 20 minutes. You can run `./destroy.sh` to delete the cluster when computation isn't required. As a rule of thumb, state is persisted in external EBS volumes and automatically reattached to the same new cluster.
 
 ## Admin
 

@@ -5,15 +5,15 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/name: hive-metastore
+      app/instance: {{ .Release.Name }}
+      app/name: hive-metastore
   serviceName: {{ .Release.Name }}-hive-metastore
   replicas: 1
   template:
     metadata:
       labels:
-        app.kubernetes.io/instance: {{ .Release.Name }}
-        app.kubernetes.io/name: hive-metastore
+        app/instance: {{ .Release.Name }}
+        app/name: hive-metastore
     spec:
       containers:
       - name: metastore

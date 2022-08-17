@@ -1,6 +1,15 @@
 #!/bin/bash
 source init.sh
 
+profile=default
+while (( $# )); do
+    case $1 in
+        -p|--profile) shift; profile=$1;;
+        -*) echo "unknown $1 option" >&2; exit 1;;
+    esac
+    shift
+done
+
 argocd app create airflow \
     --upsert \
     --repo $DaP_REPO \
@@ -11,7 +20,10 @@ argocd app create airflow \
     --sync-policy $DaP_SYNC \
     --self-heal \
     --auto-prune \
-    -p airflow.airflowVersion=$AIRFLOW_VERSION \
+    --values profile/default.yaml \
+    --values profile/$profile.yaml \
+    -p region=$REGION \
+    -p airflow.webserverSecretKey=`openssl rand -hex 16` \
     -p airflow.defaultAirflowRepository=$REGISTRY/airflow \
     -p airflow.dags.gitSync.repo=$DaP_REPO \
     -p airflow.dags.gitSync.branch=$DaP_BRANCH \

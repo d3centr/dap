@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-image-build
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-image-build
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ .Release.Name }}-image-build
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - "--context=/mnt"
+        - "--destination={{ .Values.airflow.defaultAirflowRepository }}:{{ .Values.airflow.airflowVersion }}"
+        - "--cache=false"
+        volumeMounts:
+        - name: dockerfile
+          mountPath: /mnt
+      volumes:
+      - name: dockerfile
+        configMap:
+          name: {{ .Release.Name }}-dockerfile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dockerfile
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  Dockerfile: |
+    FROM {{ .Values.airflow.defaultAirflowRepository }}:base-{{ .Values.airflow.airflowVersion }}
+    RUN cd dap && git pull && cp -r {{ .Values.airflow.dags.gitSync.subPath }}/* ../dags
+

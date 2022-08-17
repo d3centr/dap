@@ -4,13 +4,21 @@
 `./stack.sh network.yaml`
 
 ### Deploy Geth
-```
-aws cloudformation create-stack --stack-name dap-geth --template-body file://geth.yaml \
-    --capabilities CAPABILITY_IAM \
-    --parameters ParameterKey=InstanceSize,ParameterValue=xlarge
-```
+`./stack.sh geth.yaml InstanceSize=xlarge NetRestrict=false`
+- the same command can update an existing stack
 
-Replace `create` by `update` to deploy template or parameter changes: `aws cloudformation update-stack ...`. Values of previous configuration can be kept by overriding template defaults with parameters like `ParameterKey=NetRestrict,UsePreviousValue=true`.
+**Caveat**: change `InstanceSize` to force a Geth version upgrade in a running client.
+
+*Monitoring your blockchain client*: a Geth dashboard is available in Grafana but requires a running DaP cluster.\
+You can also open a shell on your node: select the instance in EC2 console and connect with Session Manager.
+```bash
+sudo su  # get rights to access system logs
+cat /var/log/cfn-init.log  # shows how bootstrap steps went
+cat /var/log/bootstrap.log  # see logs inside those steps (debug)
+journalctl -u geth -fo cat  # watch geth logs
+geth attach /mnt/geth/geth.ipc  # open geth console
+```
+**Tip**: in geth console, `debug.vmodule('rpc=5')` activates RPC debug logs.
 
 ### DaP Domain
 *optional but convenient*
@@ -40,6 +48,7 @@ Airflow | airflow.example.com | `... -n airflow svc/airflow-webserver 8080`
 Argo CD | cd.example.com | `... -n argocd svc/argocd-server 8081:80`
 Argo Workflows | argo.example.com | `... -n argo svc/wf-argo-workflows-server 2746`
 Grafana | grafana.example.com | `... -n monitor svc/monitor-grafana 8082:80`
+Spark Thrift Server | sts.example.com | `... -n spark svc/sparkubi-thrift 4040`
 Superset | superset.example.com | `... -n superset svc/superset 8088`
 
 <sup>1</sup> on green clusters, add 2 to subdomain: e.g. airflow2.example.com or cd2.example.com

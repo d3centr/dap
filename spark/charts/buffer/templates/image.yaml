@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-image
+  annotations:
+    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  template:
+    metadata:
+      name: kafka-image
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: kafka-image
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - "--context=/mnt"
+        - "--destination={{ .Values.global.registry }}:kafka-{{ .Values.kafkaVersion }}"
+        - "--cache=true"
+        volumeMounts:
+        - name: dockerfile
+          mountPath: /mnt
+      volumes:
+      - name: dockerfile
+        configMap:
+          name: kafka-dockerfile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-dockerfile
+  annotations:
+    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  Dockerfile: |
+    FROM openjdk:11-jre-slim
+
+    ARG KAFKA_VERSION={{ .Values.kafkaVersion }}
+    ARG KAFKA_RELEASE={{ tpl .Values.kafkaRelease . }}
+    ARG URL=https://dlcdn.apache.org/kafka/$KAFKA_VERSION/$KAFKA_RELEASE.tgz
+
+    RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && \
+        mkdir /opt/dap && curl -O $URL && tar -xzf $KAFKA_RELEASE.tgz -C /opt/dap && \
+        rm $KAFKA_RELEASE.tgz && apt-get autoremove -y curl
+    
+    WORKDIR /opt/dap/$KAFKA_RELEASE
+    ENTRYPOINT ["bash", "-c"]
+

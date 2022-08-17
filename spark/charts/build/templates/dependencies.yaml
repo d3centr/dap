@@ -1,11 +1,10 @@
-{{ if eq .Release.Name "sparkubi" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ .Release.Name }}-dependencies
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.depBuild }}
-    helm.sh/hook-weight: "-100"
+    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    helm.sh/hook-weight: "-1"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   template:
@@ -18,7 +17,7 @@ spec:
         image: gcr.io/kaniko-project/executor:latest
         args:
         - "--context=/mnt"
-        - "--destination={{ .Values.global.registry }}:dep"
+        - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-dep-{{ .Values.sparkVersion }}"
         - "--cache=true"
         resources:
           requests:
@@ -30,39 +29,33 @@ spec:
       volumes:
       - name: dockerfile
         configMap:
-          name: dep-dockerfile
+          name: {{ .Release.Name }}-dep-dockerfile
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: dep-dockerfile
+  name: {{ .Release.Name }}-dep-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.depBuild }}
-    helm.sh/hook-weight: "-100"
+    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    helm.sh/hook-weight: "-1"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   Dockerfile: |
-    FROM {{ .Values.global.registry }}:base
+    FROM {{ .Values.global.registry }}:{{ .Release.Name }}-base-{{ .Values.sparkVersion }}
 
     ARG MVN=https://repo1.maven.org/maven2
     ARG DEST=/opt/spark/jars/
 
     # S3
-    ADD $MVN/org/apache/hadoop/hadoop-aws/{{ .Values.hadoopVersion }}/hadoop-aws-{{ .Values.hadoopVersion }}.jar $DEST
-    ADD $MVN/com/amazonaws/aws-java-sdk-bundle/{{ .Values.awsSdkVersion }}/aws-java-sdk-bundle-{{ .Values.awsSdkVersion }}.jar $DEST
+    ADD $MVN/org/apache/hadoop/hadoop-aws/{{ .Values.global.hadoopVersion }}/hadoop-aws-{{ .Values.global.hadoopVersion }}.jar $DEST
+    ADD $MVN/com/amazonaws/aws-java-sdk-bundle/{{ .Values.global.awsSdkVersion }}/aws-java-sdk-bundle-{{ .Values.global.awsSdkVersion }}.jar $DEST
 
-    # Delta: see https://docs.delta.io/latest/releases.html for Spark version compatibility
-    ADD $MVN/io/delta/delta-core_2.12/1.1.0/delta-core_2.12-1.1.0.jar $DEST
-
-    # Delta Compile Dependencies: should not be required, test next upgrade.
-    ADD $MVN/org/codehaus/jackson/jackson-core-asl/1.9.13/jackson-core-asl-1.9.13.jar $DEST
-    # skipping antlr4-runtime-4.8: already available in Spark distribution
-
+    # Delta
+    ADD $MVN/io/delta/delta-core_{{ .Values.scalaVersion }}/{{ .Values.global.deltaCoreVersion }}/delta-core_{{ .Values.scalaVersion }}-{{ .Values.global.deltaCoreVersion }}.jar $DEST
     # Hive Connector
-    ADD $MVN/io/delta/delta-hive_2.12/0.2.0/delta-hive_2.12-0.2.0.jar $DEST
+    ADD $MVN/io/delta/delta-hive_{{ .Values.scalaVersion }}/{{ .Values.global.deltaHiveVersion }}/delta-hive_{{ .Values.scalaVersion }}-{{ .Values.global.deltaHiveVersion }}.jar $DEST
 
     USER root
     RUN chmod 644 $DEST*
     USER 185
-{{ end }}
 

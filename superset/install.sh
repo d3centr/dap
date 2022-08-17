@@ -20,12 +20,9 @@ argocd app create superset \
     --sync-policy $DaP_SYNC \
     --self-heal \
     --auto-prune \
-    --values chart/profile/default.yaml \
-    --values chart/profile/$profile.yaml \
+    --values profile/default.yaml \
+    --values profile/$profile.yaml \
     --values values.yaml \
-    -p build.supersetVersion=$SUPERSET_VERSION \
-    -p superset.image.tag=$SUPERSET_VERSION \
-    -p build.image.repository=$REGISTRY/superset \
     -p superset.image.repository=$REGISTRY/superset \
     -p superset.postgresql.primary.persistence.existingClaim=$PG_VOLUME
 

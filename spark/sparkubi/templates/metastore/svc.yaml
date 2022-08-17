@@ -8,6 +8,6 @@ spec:
       port: 9083
       protocol: TCP
   selector:
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/name: hive-metastore
+    app/instance: {{ .Release.Name }}
+    app/name: hive-metastore
 

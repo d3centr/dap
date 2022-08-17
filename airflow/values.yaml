@@ -1,23 +1,56 @@
+pipPackages:
+  - pyarrow==6.0.1
+  - web3==5.30.0
+  - s3fs==2022.7.1
+  - mmh3==3.0.0
+  # https://pypi.org/project/apache-airflow-providers-apache-hive/
+  - apache-airflow-providers-apache-hive==4.0.0
 airflow:
-  defaultAirflowTag: latest
+  # 2.3.0 issue https://github.com/apache/airflow/issues/23512 -> wait for 2.4.0
+  # breaking change next upgrade: AUTH_BACKEND -> AUTH_BACKENDS in base build
+  defaultAirflowTag: 2.2.5
+  airflowVersion: 2.2.5  # always copy above: used in build + chart legacy
   executor: KubernetesExecutor
+  images:
+    airflow:
+      # ensures up-to-date dags
+      pullPolicy: Always
+    pod_template:
+      # idem
+      pullPolicy: Always
+  migrateDatabaseJob:
+    enabled: true
+    # helm post-install and post-upgrade hooks wait for a healthy state in Argo CD:
+    # fix pods stuck in init state waiting for db migration
+    useHelmHooks: false
+    jobAnnotations:
+      argocd.argoproj.io/hook: Sync
+      argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+      argocd.argoproj.io/sync-wave: "0"
+  createUserJob:
+    useHelmHooks: false
+    jobAnnotations:
+      argocd.argoproj.io/hook: PostSync
+      argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+      argocd.argoproj.io/sync-wave: "1"
+    args:
+      - bash
+      - -c
+      - airflow users create -r Admin -u dap -p dap -f dap -l dap -e dummy@email.me
   extraEnvFrom: |
     - configMapRef:
         name: env 
-  migrateDatabaseJob:
-    jobAnnotations:
-      argocd.argoproj.io/hook: Skip
   dags:
     gitSync:
       subPath: airflow/dags
-  images:
-    airflow:
-      pullPolicy: Always
   webserver:
+    waitForMigrations:
+      enabled: true
     resources:
       requests:
         memory: 1300Mi
     defaultUser:
+      # trigger create user job
       enabled: false
   postgresql:
     persistence:
@@ -30,4 +63,6 @@ airflow:
     core:
       store_dag_code: 'False'
       dagbag_import_timeout: 60.0
+  statsd:
+    enabled: false
 

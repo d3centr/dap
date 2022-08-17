@@ -9,7 +9,25 @@ source init.sh
 
 echo 'DaP ~ running Airflow pre-install'
 
-kubectl create namespace airflow --dry-run=client -o yaml | kubectl apply -f -
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: airflow
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spark-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spark-submit
+subjects:
+- kind: ServiceAccount
+  name: airflow-worker
+  namespace: airflow
+EOF
 
 
 # Create global environment variables in airflow namespace.
@@ -27,6 +45,8 @@ persistent_volume $PG_VOLUME 8 airflow
 airflow_repo=$CLUSTER/airflow
 aws ecr describe-repositories --repository-names $airflow_repo ||
     aws ecr create-repository --repository-name $airflow_repo
+aws ecr describe-repositories --repository-names $airflow_repo/cache ||
+    aws ecr create-repository --repository-name $airflow_repo/cache
 
 cat <<EOF | aws ecr put-lifecycle-policy --repository-name $airflow_repo \
     --lifecycle-policy-text file:///dev/stdin
@@ -36,6 +56,25 @@ cat <<EOF | aws ecr put-lifecycle-policy --repository-name $airflow_repo \
            "rulePriority": 1,
            "selection": {
                "tagStatus": "untagged",
+               "countType": "sinceImagePushed",
+               "countUnit": "days",
+               "countNumber": 15
+           },
+           "action": {
+               "type": "expire"
+           }
+       }
+   ]
+}
+EOF
+cat <<EOF | aws ecr put-lifecycle-policy --repository-name $airflow_repo/cache \
+    --lifecycle-policy-text file:///dev/stdin
+{
+   "rules": [
+       {
+           "rulePriority": 1,
+           "selection": {
+               "tagStatus": "any",
                "countType": "sinceImagePushed",
                "countUnit": "days",
                "countNumber": 30
@@ -51,66 +90,26 @@ EOF
 airflow_bucket=$CLUSTER-$REGION-airflow-$ACCOUNT
 aws s3api head-bucket --bucket $airflow_bucket || aws s3 mb s3://$airflow_bucket
 echo "s3://$airflow_bucket"
+# API is expecting a prefix: set empty
+cat <<EOF | aws s3api put-bucket-lifecycle-configuration \
+    --bucket $airflow_bucket \
+    --lifecycle-configuration file:///dev/stdin
+{
+    "Rules": [
+        {
+            "Status": "Enabled",
+            "Expiration": {
+                "Days": 30
+            },
+            "Prefix": ""
+        }
+    ]
+}
+EOF
 
 data_bucket=$CLUSTER-$REGION-data-$ACCOUNT
 aws s3api head-bucket --bucket $data_bucket || aws s3 mb s3://$data_bucket
 echo "s3://$data_bucket"
-
-
-# Build base Airflow image to decouple from dag updates in automated build.
-# This will speed up development feedback loops through CICD.
-cat <<EOF | kubectl apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: airflow-base-build
-  namespace: airflow
-spec:
-  template:
-    metadata:
-      name: airflow-base-build
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: airflow-base-build
-        image: gcr.io/kaniko-project/executor:latest
-        args:
-        - --context=/mnt
-        - --destination=$REGISTRY/airflow:base
-        volumeMounts:
-        - name: dockerfile
-          mountPath: /mnt
-      volumes:
-      - name: dockerfile
-        configMap:
-          name: airflow-base-dockerfile
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: airflow-base-dockerfile
-  namespace: airflow
-data:
-  Dockerfile: |
-    FROM apache/airflow:$AIRFLOW_VERSION
-
-    USER root
-    RUN apt-get update && \
-        apt-get install -y git gcc vim && \
-        rm -rf /var/lib/apt/lists/*
-
-    USER airflow
-    RUN pip install web3 pyarrow s3fs mmh3
-    RUN git clone --single-branch --depth 1 \
-        --branch main https://github.com/Uniswap/uniswap-v3-subgraph.git
-    RUN echo "AUTH_ROLE_PUBLIC = 'Admin'" >> /opt/airflow/webserver_config.py
-
-    ENV AWS_DEFAULT_REGION $REGION
-EOF
-
-sleep 2
-kubectl attach -n airflow job/airflow-base-build
-kubectl delete job -n airflow airflow-base-build
 
 
 echo 'DaP ~ stateful Airflow resources provisioned'

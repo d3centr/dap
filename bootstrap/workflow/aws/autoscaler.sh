@@ -28,7 +28,7 @@ autoscaler_version=`curl -s https://api.github.com/repos/kubernetes/autoscaler/t
 
 # Do not add in application layer, e.g. Argo CD.
 # Autoscaler should be part of infrastructure layer for app dependencies on compute capacity.
-helm install --namespace kube-system \
+helm upgrade -i --namespace kube-system \
     --set clusterName=$color-dap,imageVersion=$autoscaler_version \
     cluster-autoscaler ./workflow/aws/helm/cluster-autoscaler
 

@@ -83,18 +83,22 @@ Resources:
       ClientName: !Ref Domain
       CallbackURLs:
         - !Sub https://${Domain}/oauth2/idpresponse
+        - !Sub https://airflow.${Domain}/oauth2/idpresponse
+        - !Sub https://airflow2.${Domain}/oauth2/idpresponse
         - !Sub https://argo.${Domain}/oauth2/idpresponse
         - !Sub https://argo2.${Domain}/oauth2/idpresponse
         - !Sub https://cd.${Domain}/oauth2/idpresponse
         - !Sub https://cd2.${Domain}/oauth2/idpresponse
         - !Sub https://grafana.${Domain}/oauth2/idpresponse
         - !Sub https://grafana2.${Domain}/oauth2/idpresponse
+        - !Sub https://sts.${Domain}/oauth2/idpresponse
+        - !Sub https://sts2.${Domain}/oauth2/idpresponse
         - !Sub https://superset.${Domain}/oauth2/idpresponse
         - !Sub https://superset2.${Domain}/oauth2/idpresponse
       DefaultRedirectURI: !Sub https://${Domain}/oauth2/idpresponse
       LogoutURLs:
         - https://start.duckduckgo.com
-      # when shorter, chart annotation alb.ingress.../auth-session-timeout takes precedence over token validity
+      # chart annotation alb.ingress.../auth-session-timeout takes precedence over token validity
       # must be between 5 minutes and 1 day, cannot be greater than refresh token expiration
       IdTokenValidity: 8
       # idem

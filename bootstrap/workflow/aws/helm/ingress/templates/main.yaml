@@ -27,7 +27,7 @@ metadata:
     }'
     # ACM certificate ARN for your SSL domain
     alb.ingress.kubernetes.io/certificate-arn: {{ .Values.certificate }}
-    alb.ingress.kubernetes.io/target-type: instance
+    alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/group.name: lb0
 spec:
   ingressClassName: alb

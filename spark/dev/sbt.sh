@@ -1,8 +1,9 @@
 #!/bin/bash
 app=${1///}
-
+root=`git rev-parse --show-toplevel`
 # authenticate with cluster and export REGISTRY variable
-source `git rev-parse --show-toplevel`/bootstrap/app-init.sh
+. $root/bootstrap/app-init.sh
+. $root/spark/$app/config/VERSIONS
 
 cat <<EOF | kubectl apply -f -
 apiVersion: batch/v1
@@ -20,9 +21,9 @@ spec:
       serviceAccountName: spark
       containers:
       - name: $app-sbt
-        image: $REGISTRY/spark:$app-builder
+        image: $REGISTRY/spark:$app-builder-$APP_VERSION
         imagePullPolicy: Always
-        workingDir: /opt/spark/work-dir/dap/spark 
+        workingDir: /opt/spark/work-dir/dap/spark/$app 
         args:
         - /root/.sdkman/candidates/sbt/current/bin/sbt
         stdin: true

@@ -162,6 +162,14 @@ Outputs:
     Value: !GetAtt DiscoverySG.GroupId
     Export:
       Name: !Sub ${AWS::StackName}-discovery-sg
+  HttpSG:
+    Value: !GetAtt HttpSG.GroupId
+    Export:
+      Name: !Sub ${AWS::StackName}-http-sg
+  WebSocketSG:
+    Value: !GetAtt WebSocketSG.GroupId
+    Export:
+      Name: !Sub ${AWS::StackName}-ws-sg
   EthENI:
     Value: !GetAtt EthENI.Id
     Export:

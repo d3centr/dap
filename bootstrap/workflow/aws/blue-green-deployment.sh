@@ -130,6 +130,7 @@ data:
   REGISTRY: $ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$new-dap
   KUBECTL_VERSION: $KUBECTL_VERSION
   LOG_BUCKET: $new-dap-$REGION-log-$ACCOUNT
+  TEST_BUCKET: $new-dap-$REGION-airflow-$ACCOUNT
   DATA_BUCKET: $new-dap-$REGION-data-$ACCOUNT
   OTHER_DATA_BUCKET: $other-dap-$REGION-data-$ACCOUNT
   DELTA_BUCKET: $new-dap-$REGION-delta-$ACCOUNT

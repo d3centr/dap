@@ -6,8 +6,6 @@ import org.apache.log4j.Logger
 
 trait Spark extends Serializable {
 
-    val DataBucket = sys.env("DATA_BUCKET")
-    val DeltaBucket = sys.env("DELTA_BUCKET")
     // max recent blocks to derive last price quotes and exchange rates
     val BlockExpiry = 10000
     // used in Source to calculate oldest block to include in previous epoch
@@ -40,7 +38,9 @@ trait Spark extends Serializable {
         config(conf).
         getOrCreate
 
-    lazy val aggDate = spark.conf.get("spark.driver.dap.agg.date")
+    val DataBucket = sys.env("DATA_BUCKET")
+    lazy val DeltaBucket = spark.conf.get("spark.driver.dap.sinkBucket")
+    lazy val aggDate = spark.conf.get("spark.driver.dap.date")
     lazy val epoch = spark.conf.get("spark.driver.dap.epoch").toInt
     lazy val isLiveStreaming = epoch == -1
 

@@ -1,5 +1,5 @@
 build:
-  baseImage: dep
+  baseImage: sparkubi-dep-{{ .Values.sparkVersion }}
 postgresql:
   postgresqlUsername: hive
   postgresqlPassword: hive

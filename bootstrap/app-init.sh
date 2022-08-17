@@ -15,6 +15,8 @@ root=`git rev-parse --show-toplevel`
 $root/bootstrap/workflow/aws/lib/authenticate_with_last_cluster_created.sh
 read REGION ACCOUNT CLUSTER <<< `kubectl config current-context | awk -F'[:/]' '{print $4,$5,$NF}'`
 REGISTRY=$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$CLUSTER
+# default for local spark submit override of sink bucket
+DELTA_BUCKET=$CLUSTER-$REGION-delta-$ACCOUNT
 
 # --plaintext disables TLS on client because it is disabled on server (configured on LB)
 # + kubectl port-forward goes through an encrypted TLS tunnel

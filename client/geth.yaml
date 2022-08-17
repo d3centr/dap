@@ -3,21 +3,20 @@ AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   GethBuild:
     Type: String
-    Default: geth-alltools-linux-amd64-1.10.16-20356e57
-    Description: "Change InstanceSize in a `cloudformation update-stack` call to force version update in a running client."
+    Description: "Change InstanceSize to force version update in a running client."
   Image:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2
   InstanceSize:
     Type: String
     Default: xlarge
-    Description: "'large' for cost-optimized node, 'xlarge' to sync twice faster, '4xlarge' recommended to extract contract events"
+    Description: "'large' for cost-optimized node, 'xlarge' to sync twice faster, '2xlarge' to extract events"
   HotVolumeSize:
     Type: Number
-    Default: 300
+    Default: 350
   ColdVolumeSize:
     Type: Number
-    Default: 400
+    Default: 450
   ColdVolumeType:
     Type: String
     Default: gp3
@@ -155,11 +154,14 @@ Resources:
         SecurityGroupIds:
           - !ImportValue dap-network-listener-sg
           - !ImportValue dap-network-discovery-sg
+          - !ImportValue dap-network-http-sg
+          - !ImportValue dap-network-ws-sg
         TagSpecifications:
           - ResourceType: instance
             Tags:
               - Key: Name
                 Value: !Ref AWS::StackName
+        # MIME multi-part file adds a cloud-config to run user data not only during the first boot
         UserData:
           Fn::Base64: !Sub |
             Content-Type: multipart/mixed; boundary="//"
@@ -231,9 +233,10 @@ Resources:
                 instance_id=`curl http://169.254.169.254/latest/meta-data/instance-id`
                 aws ec2 attach-volume --volume-id ${HotVolume} --instance-id $instance_id --device /dev/sdf
                 aws ec2 attach-volume --volume-id ${ColdVolume} --instance-id $instance_id --device /dev/sdg
-                # buffer to make sure devices are symlinked
-                sleep 3
+                # fixes mount errors like: "/mnt/geth: special device /dev/sdf does not exist."
+                while [ `readlink -f /dev/sdf` = /dev/sdf ]; do sleep 1; done  # make sure device name is symlinked
                 hot_device=`readlink -f /dev/sdf`
+                while [ `readlink -f /dev/sdg` = /dev/sdg ]; do sleep 1; done
                 cold_device=`readlink -f /dev/sdg`
 
                 for device in $hot_device $cold_device; do

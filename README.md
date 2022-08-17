@@ -1,18 +1,30 @@
 # DaP
 DaP is an open platform to ingest, process and analyze Web3 data.
 
-_Your launch base to engineer Web3 insights._
-
 [ [Deployment](/bootstrap#deployment) ]
 
-## Features
+### Features
 - __Embedded Blockchain__ makes DaP self-sufficient.
 - __Data Pipelines__ from ingestion to vizualisation: you develop it, DaP builds and runs it.
 - __SQL Analytics__ powered by [SparkUBI](./spark/sparkubi): precise off-chain calculations at scale on Spark engine.
-- __Price Quotes__: Uniswap pipeline provides historicals of live token valuations in ETH and USD.
+- __Token Prices__ at the historical live exchange rate on Uniswap.
+
+### Technology
+In technical terms, DaP is an OLAP system for Web3: 
+> Online analytical processing (OLAP) uses complex queries to analyze aggregated historical data from OLTP systems.
+
+For instance, [The Graph](https://thegraph.com/en/) is an OLTP system for Web3:
+> Online transaction processing (OLTP) captures, stores, and processes data from transactions in real time.
+
+While they both serve queries, OLAP requires a different architecture for analytics than OLTP for web applications. The former optimizes higher throughput of arbitrary computations and the latter lower latency of pre-defined logic.
+
+### Limits
+Like any OLAP solution, DaP trades off multi-tenancy for scale and responsiveness for bandwidth, i.e.
+- APIs are not designed to be exposed publicly;
+- best latency such a system can achieve is near real-time (seconds vs milliseconds in OLTP).
 
 ## Stack
-DaP runs in AWS on a Data Lakehouse architecture, enabling BI and ML on the same transactional system. Much of the development work has gone into the integration, specialization and automation of awesome open-source projects.
+DaP runs in AWS on a Data Lakehouse architecture, enabling BI and ML in a single system supporting ACID transactions. Much of the development work has gone into the integration, specialization and automation of awesome open-source projects.
 
 - DaP has been made possible by [K8s](https://github.com/kubernetes/kubernetes), [Geth](https://github.com/ethereum/go-ethereum), [Uniswap](https://uniswap.org/), [Airflow](https://github.com/apache/airflow), [Spark](https://github.com/apache/spark) & [Superset](https://github.com/apache/superset).
 - It's been automated with tools like [CloudFormation](https://aws.amazon.com/cloudformation/), [eksctl](https://github.com/weaveworks/eksctl), [Argo CD](https://github.com/argoproj/argo-cd), [Kaniko](https://github.com/GoogleContainerTools/kaniko) & good old bash.
@@ -25,7 +37,7 @@ DaP runs in AWS on a Data Lakehouse architecture, enabling BI and ML on the same
 Imperative configuration has been made immutable with system-wide blue-green deployment. It reduces maintenance by removing the need to manage state drift where declarative manifests do not work. No effort is spent handling updates. Another system version can be easily bootstrapped from scratch in parallel. Development always happen on a clean slate and no environment is subpar.
 - **Data Extraction** - _Scalable data lake feed._
 
-Ingesting historical events from smart contracts scales with processors available to an integrated Ethereum client. Computing capacity is decoupled from blockchain state and can be resized on demand (`InstanceSize` parameter in Geth [template](/client/geth.yaml)). On the server side, Airflow workers required for orchestration and post-processing can be left entirely managed by K8s autoscaler.
+Ingesting historical events from smart contracts scales with processors available to an integrated Ethereum client. Computing capacity is decoupled from blockchain state and can be resized on demand. On the server side, Airflow workers required for orchestration and post-processing can be left entirely managed by K8s autoscaler.
 - **Processing** - _Off-chain computation engine._
 
 Apache Spark has been extended with a custom plugin enabling the seamless processing of big blockchain integers. The accurate valuation of transactions and tokens benefits from native Spark performance. See [SparkUBI](/spark/sparkubi/README.md) for more info.

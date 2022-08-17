@@ -10,7 +10,7 @@ object Source extends Spark {
     
     def pools = {
         
-        val pools = spark.read.parquet(s"s3://$DataBucket/uniswap-v3-subgraph").
+        val pools = spark.read.parquet(s"s3://$DataBucket/uniswap/shards=0").
             where('contract==="Factory").
             where('event==="PoolCreated")
 
@@ -39,44 +39,43 @@ object Source extends Spark {
     def transactions(epoch: Int, blockExpiry: Long) = {
 
         def blocks(epoch: Tuple2[Int, Int], blockExpiry: Long) = {
-            
             val (partition, index) = epoch
             
-            // treat each partition as a standalone dataset to segregate different schemas  
+            // Treat each epoch as a standalone dataset to reconcile schemas pre/post EIP-1559.
+            // I.e. where('epoch===partition) would throw spark.sql.AnalysisException: 
+            // cannot resolve 'baseFeePerGas'. 
             val df = spark.read.parquet(s"s3://$DataBucket/blocks/epoch=$partition").
                 withColumnRenamed("number", "blockNumber")
                 
-            if(index == 0) df.where('blockNumber >= partition * EpochLength - blockExpiry)
-            else df
-            
+            val epochStart = partition * EpochLength
+            val lookback = if(index == 0) 
+                df.where('blockNumber >= epochStart - blockExpiry) else df
+
+            val LondonUpgradeBlock = 12965000
+            if(LondonUpgradeBlock > epochStart)
+                // placeholder to bypass spark.sql.AnalysisException before London upgrade
+                // side-effect: baseFeePerGas will only be available next epoch after fork
+                lookback.withColumn("baseFeePerGas", lit(null))
+            else lookback
         }
 
-        def expand(blocks: DataFrame) = {
-
-            val hasBaseFee = epoch > 432  // first full epoch post London upgrade
-
-            blocks.
-                select(col("*"), explode('transactions).as("transaction")).
-                select(    
-                    'blockNumber,
-                    'timestamp,
-                    'transaction("hash").as("transactionHash"),
-                    'transaction("gas").as("gas"),
-                    concat('transaction("gasPrice"), lit("e18")).as("gasPrice"),
-                    // fill missing baseFee field with null before hard fork
-                    when(lit(hasBaseFee), 
-                        concat('baseFeePerGas, lit("e18"))).as("baseFeePerGas")).
-                withColumn("gasFees", ubim('gas.cast("string"), 'gasPrice)).
-                withColumn("tip", ubis('gasPrice, 'baseFeePerGas))
-
-        }
+        def expand(blocks: DataFrame) = blocks.
+            select(col("*"), explode('transactions).as("transaction")).
+            select(    
+                'blockNumber,
+                'timestamp,
+                'transaction("hash").as("transactionHash"),
+                'transaction("gas").as("gas"),
+                concat('transaction("gasPrice"), lit("e18")).as("gasPrice"),
+                concat('baseFeePerGas, lit("e18")).as("baseFeePerGas")).
+            withColumn("gasFees", ubim('gas.cast("string"), 'gasPrice)).
+            withColumn("tip", ubis('gasPrice, 'baseFeePerGas))
         
         /* bypass Spark partition filter detecting inconsistency pre/post EIP-1559:
            load epochs separately, normalize baseFee when unfolding transactions and combine */
         (epoch - 1 to epoch).zipWithIndex.map(t => 
             expand(blocks(t, blockExpiry))).
         reduce(_ union _)
-            
     }
 
     def swapArgsJsonSchema(decimalType: String = "string") = s"""
@@ -100,7 +99,7 @@ object Source extends Spark {
 
         val (argsMap, argsSchema) = deserialize_json('args, swapArgsJsonSchema())
 
-        spark.read.parquet(s"s3://$DataBucket/uniswap-v3-subgraph").
+        spark.read.parquet(s"s3://$DataBucket/uniswap/shards=0").
             where('contract==="Pool").where('epoch.between(epoch - 1, epoch)).
             where('blockNumber >= (epoch - 1) * EpochLength - blockExpiry).
             where('event==="Swap").

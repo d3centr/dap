@@ -1,6 +1,4 @@
 grafana:
-  service:
-    type: NodePort
   grafana.ini:
     auth.anonymous:
       enabled: true
@@ -56,6 +54,13 @@ prometheus:
           file_sd_configs:
             - files:
               - /mnt/eth-targets.json
+        - job_name: kubelet
+          kubernetes_sd_configs:
+          - role: node
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         - job_name: kubernetes-nodes-cadvisor
           scrape_interval: 10s
           scrape_timeout: 5s

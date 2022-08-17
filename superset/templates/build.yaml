@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: base-image
+  annotations:
+    argocd.argoproj.io/hook: {{ .Values.baseBuild }}
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  template:
+    metadata:
+      name: base-image
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: base-image
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - "--context=/mnt"
+        - "--destination={{ .Values.superset.image.repository }}:{{ .Values.superset.image.tag }}"
+        - "--cache=true"
+        resources:
+          requests:
+            cpu: 600m
+            memory: 180Mi
+        volumeMounts:
+        - name: dockerfile
+          mountPath: /mnt
+      volumes:
+      - name: dockerfile
+        configMap:
+          name: base-dockerfile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: base-dockerfile
+  annotations:
+    argocd.argoproj.io/hook: {{ .Values.baseBuild }}
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  Dockerfile: |
+    FROM apache/superset:{{ .Values.superset.image.tag }}
+
+    USER root
+    # quick fix of https://github.com/apache/superset/issues/16509
+    RUN bug_path=`pip show pyhive | grep -oP '(?<=^Location: ).+'`/pyhive/sqlalchemy_hive.py && \
+        sed -i 's/\[row\[0\] for row in connection.execute(query)\]/[row[1] for row in connection.execute(query)]/' $bug_path 
+

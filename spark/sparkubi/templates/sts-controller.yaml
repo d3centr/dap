@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sts-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app/instance: {{ .Release.Name }}
+      app/name: sts-controller
+  template:
+    metadata:
+      labels:
+        app/instance: {{ .Release.Name }}
+        app/name: sts-controller
+    spec:
+      serviceAccountName: spark
+      containers:
+      - name: sts-controller
+        image: {{ .Values.global.registry }}:{{ .Release.Name }}-builder-{{ .Values.global.appVersion }}
+        imagePullPolicy: Always
+        # pass REGISTRY environment variable to submit script
+        envFrom:
+        - configMapRef:
+            name: env
+        command:
+        - bash
+        - -c
+        - ./submit.sh -c {{ .Values.config }} sparkubi thrift
+      initContainers:
+      - command:
+        - /bin/sh
+        - -c
+        - until nc -zv sparkubi-hive-metastore.spark.svc.cluster.local 9083 -w1; do 
+            echo 'waiting for Thrift port of Hive metastore'; sleep 1; done
+        image: busybox:1.35.0
+        imagePullPolicy: IfNotPresent
+        name: wait-for-hive
+

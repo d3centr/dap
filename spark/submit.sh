@@ -1,15 +1,15 @@
 #!/bin/bash
+set -eo pipefail
 
 ## Runtime Configuration
-
-# SparkUBI settings
-PRECISION=200
-SIMPLIFY=100
-MIN_BITS=192
-RESCALE=false  # overridden below in Aggregate class case
-PROFILING=false
-
-help () { echo "usage: ./submit.sh [-c config] <app name> <arg>";}
+help () { echo "
+    usage: ./submit.sh [-c config] <app name> <spark job type> <script>
+    [ ... ]: optional
+    - config: non-default config name in spark/<app name>/config
+    - spark job type: epoch (^[0-9]+$) or date (^[0-9]{4}(-[0-9]{2}){2}$) argument for submit; 
+        'shell', 'script' or 'thrift' otherwise
+    - script: name of spark-shell script, valid only when job type is 'script'
+";}
 
 config=default
 args=()  # positional arguments
@@ -22,58 +22,108 @@ while (( $# )); do
     esac
     shift
 done
-
 # make positional args the whole argument list to skip processed named args
 set -- ${args[@]}
 
 app=${1///}
-source $app/config/$config
-shell_jars="/opt/spark/work-dir/dap/spark/$app/target/scala-2.12/\*.jar"
+# default SparkUBI settings
+SPARKUBI_PRECISION=200
+SPARKUBI_SIMPLIFY=100
+SPARKUBI_MIN_BITS=192
+SPARKUBI_RESCALE=true
+SPARKUBI_PROFILING=false
+. $app/config/$config  # can override SparkUBI variables
+. $app/config/VERSIONS
 
+shell_jars="/opt/spark/work-dir/dap/spark/$app/target/scala-$SCALA_VERSION/\*.jar"
 if [ $2 = shell ]; then
     client=shell
     name=$app
     command=shell
-    tag=$app-builder
+    tag=$app-builder-$APP_VERSION
     load="--jars $shell_jars"
 elif [ $2 = script ]; then
     client=script
     name=$app-${3/_/-}
     command=shell
-    tag=$app-builder
+    tag=$app-builder-$APP_VERSION
     load="-i /opt/spark/work-dir/dap/spark/$app/scripts/$3.scala --jars $shell_jars"
 elif [ $2 = thrift ]; then
     client=thrift
     name=$app
     command=submit
-    tag=$app
+    tag=$app-$APP_VERSION
     load="--class org.apache.spark.sql.hive.thriftserver.HiveThriftServer2"
 else
     client=submit
     command=submit
-    tag=$app
+    tag=$app-$APP_VERSION
     load="--class $class"
+    if [[ $2 =~ ^[0-9]+$ ]]; then 
+        epoch=$2
+        name=$app-$epoch
+    elif [[ $2 =~ ^[0-9]{4}(-[0-9]{2}){2}$ ]]; then 
+        _date=$2
+        name=$app-d${_date//-}
+    fi
+fi
 
-    if [[ $2 =~ ^[0-9]+$ ]]; then epoch=$2
-    elif [[ $2 =~ ^[0-9]{4}(-[0-9]{2}){2}$ ]]; then agg_date=$2; fi
-
-    case $class in
-        fyi.dap.uniswap.Aggregate)
-            name=$app-agg-${agg_date//-}
-            RESCALE=true;;
-        *) name=$app-$epoch;;
-    esac    
+garbage_collection () {
+    uid=`kubectl get job -n spark $name-$client -o jsonpath='{.metadata.uid}'`
+    ref='{"apiVersion":"batch/v1","kind":"Job","name":"'$name-$client'","uid":"'$uid'"}'
+    # set owner reference on dependent objects
+    patch='{"metadata":{"ownerReferences":['$ref']}}'
+    kubectl patch svc $name-$client -n spark -p $patch
+    kubectl patch cm $name-$client -n spark -p $patch
+}
+has_succeeded () {
+    local status=`kubectl get job -n spark $name-$client \
+        -o custom-columns=":status.succeeded" --no-headers`
+    [ $status = 1 ]
+}
+attach_client () {
+    if [ -f /.dockerenv ]; then
+        kubectl attach -n spark job/$name-$client
+    elif [[ $client =~ ^(shell|script)$  ]]; then
+        kubectl attach -in spark job/$name-$client
+    elif [ $client = submit ]; then
+        kubectl logs -n spark job/$name-$client -f
+    fi
+    has_succeeded || {
+        # late status more prone to happen in spark scripts
+        sleep 3  # give some time for pod exit to propagate
+        has_succeeded || {
+            sleep 3
+            has_succeeded
+        }
+    }
+}
+echo "DaP ~ checking if $name-$client job already exists"
+status_check=`kubectl get job -n spark $name-$client \
+    -o custom-columns=":status.active" --no-headers --ignore-not-found`
+# if job exists and client is healthy (can attach):
+# exit script upon completion, delete job and proceed otherwise
+if [ "$status_check" = 1 ]; then
+    echo "DaP ~ identical job name is already active: patching GC and attaching"
+    garbage_collection  # in case container went down before completion
+    attach_client
+    exit $?
+# non-empty string indicates that job exists event though active status is none
+elif [ -n "$status_check" ]; then
+    echo "DaP ~ identical job name isn't active: deleting"
+    kubectl delete job -n spark $name-$client
+else  # status check is empty
+    echo "DaP ~ job name not found: proceeding"
 fi
 
 ## Job
-
 if [ -f /.dockerenv ]; then 
     echo "found /.dockerenv: submit will attempt to run on local k8s"
     stdin=false
 else
     stdin=true
     echo "/.dockerenv wasn't found: authenticating with k8s outside container"
-    # authenticate with cluster and declare REGISTRY variable
+    # authenticate with cluster and declare REGISTRY + DELTA_BUCKET variables
     source `git rev-parse --show-toplevel`/bootstrap/app-init.sh
 fi
 
@@ -82,15 +132,15 @@ STATE_STORE=org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProv
 CATALOG=org.apache.spark.sql.delta.catalog.DeltaCatalog
 env="
         - name: SPARKUBI_PRECISION
-          value: \"$PRECISION\"
+          value: \"$SPARKUBI_PRECISION\"
         - name: SPARKUBI_SIMPLIFY
-          value: \"$SIMPLIFY\"
+          value: \"$SPARKUBI_SIMPLIFY\"
         - name: SPARKUBI_MIN_BITS
-          value: \"$MIN_BITS\"
+          value: \"$SPARKUBI_MIN_BITS\"
         - name: SPARKUBI_RESCALE
-          value: \"$RESCALE\"
+          value: \"$SPARKUBI_RESCALE\"
         - name: SPARKUBI_PROFILING
-          value: \"$PROFILING\"
+          value: \"$SPARKUBI_PROFILING\"
 "
 
 cat <<EOF | kubectl apply -f -
@@ -149,8 +199,9 @@ data:
         --conf spark.sql.extensions=fyi.dap.sparkubi.Extensions \
         --conf spark.sql.hive.thriftServer.singleSession=true \
         --conf spark.driver.dap.epoch=${epoch:-"-1"} \
-        --conf spark.driver.dap.agg.date=${agg_date:-"0000-00-00"} \
-        /opt/spark/jars/$app.jar
+        --conf spark.driver.dap.date=${_date:-"0000-00-00"} \
+        --conf spark.driver.dap.sinkBucket=${SINK_BUCKET:-$DELTA_BUCKET} \
+        /opt/spark/jars/${app}_$SCALA_VERSION-$APP_VERSION.jar
 
   pod-template.yaml: |
     spec:
@@ -161,7 +212,7 @@ data:
         env: $env
         resources:
           requests:
-            ephemeral-storage: 2Gi
+            ephemeral-storage: 16Gi
       tolerations:
       - key: spark
         operator: Equal
@@ -174,8 +225,10 @@ metadata:
   name: $name-$client
   namespace: spark
 spec:
-  # 0 unless debugging
-  ttlSecondsAfterFinished: 0
+  # do not set close to 0, status is tracked through job
+  ttlSecondsAfterFinished: 1200
+  # disable retries so they're managed by caller, e.g. service pod or airflow
+  backoffLimit: 0
   template:
     metadata:
       name: $name-$client
@@ -214,30 +267,17 @@ spec:
 EOF
 
 ## Garbage Collection
-
-uid=`kubectl get job -n spark $name-$client -o jsonpath='{.metadata.uid}'`
-ref='{"apiVersion":"batch/v1","kind":"Job","name":"'$name-$client'","uid":"'$uid'"}'
-
-# set owner reference on dependent objects
-patch='{"metadata":{"ownerReferences":['$ref']}}'
-kubectl patch svc $name-$client -n spark -p $patch
-kubectl patch cm $name-$client -n spark -p $patch
+garbage_collection
 
 ## Status
-
+counter=0
 client_status () {
+    ((counter++))
     local status=`kubectl get pod -n spark -l job-name=$name-$client \
         -o custom-columns=":status.phase" --no-headers`
     echo client pod $status
     [[ $status =~ ^(Running|Succeeded)$ ]]
 }
-until client_status; do sleep 2; done
-
-if [ -f /.dockerenv ]; then
-    kubectl attach -n spark job/$name-$client
-elif [[ $client =~ ^(shell|script)$  ]]; then
-    kubectl attach -in spark job/$name-$client
-elif [ $client = submit ]; then
-    kubectl logs -n spark job/$name-$client -f
-fi
+until client_status || [ $counter -ge 300 ]; do sleep 2; done
+attach_client
 

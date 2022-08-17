@@ -1,16 +1,15 @@
-{{ if eq .Release.Name "sparkubi" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: base-image
+  name: {{ .Release.Name }}-base-image
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.baseBuild }}
-    helm.sh/hook-weight: "-101"
+    argocd.argoproj.io/hook: {{ .Values.global.baseBuild }}
+    helm.sh/hook-weight: "-2"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   template:
     metadata:
-      name: base-image
+      name: {{ .Release.Name }}-base-image
     spec:
       restartPolicy: Never
       containers:
@@ -18,7 +17,7 @@ spec:
         image: gcr.io/kaniko-project/executor:latest
         args:
         - "--context=/mnt"
-        - "--destination={{ .Values.global.registry }}:base"
+        - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-base-{{ .Values.sparkVersion }}"
         - "--cache=true"
         resources:
           requests:
@@ -30,15 +29,15 @@ spec:
       volumes:
       - name: dockerfile
         configMap:
-          name: base-dockerfile
+          name: {{ .Release.Name }}-base-dockerfile
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: base-dockerfile
+  name: {{ .Release.Name }}-base-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.baseBuild }}
-    helm.sh/hook-weight: "-101"
+    argocd.argoproj.io/hook: {{ .Values.global.baseBuild }}
+    helm.sh/hook-weight: "-2"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   Dockerfile: |
@@ -92,5 +91,4 @@ data:
     ENTRYPOINT [ "/opt/entrypoint.sh" ]
 
     USER 185
-{{ end }}
 

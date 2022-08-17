@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-base-build
+  annotations:
+    argocd.argoproj.io/hook: {{ .Values.baseBuild }}
+    helm.sh/hook-weight: "-2"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-base-build
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ .Release.Name }}-base-build
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - "--context=/mnt"
+        - "--destination={{ .Values.airflow.defaultAirflowRepository }}:base-{{ .Values.airflow.airflowVersion }}"
+        - "--cache=true"
+        volumeMounts:
+        - name: dockerfile
+          mountPath: /mnt
+      volumes:
+      - name: dockerfile
+        configMap:
+          name: {{ .Release.Name }}-base-dockerfile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-base-dockerfile
+  annotations:
+    argocd.argoproj.io/hook: {{ .Values.baseBuild }}
+    helm.sh/hook-weight: "-2"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  Dockerfile: |
+    FROM apache/airflow:{{ .Values.airflow.airflowVersion }}
+
+    USER root
+    # g++ for cc1plus dependency in sasl (hive provider requirement)
+    RUN apt-get update && \
+        apt-get install -y git gcc libsasl2-dev g++ && \
+        rm -rf /var/lib/apt/lists/*
+
+    USER airflow
+    RUN pip install {{ join " " .Values.pipPackages }}
+
+    RUN git clone --single-branch --depth 1 \
+            --branch {{ .Values.airflow.dags.gitSync.branch }} \
+            {{ .Values.airflow.dags.gitSync.repo }} && \
+        cp -r dap/{{ .Values.airflow.dags.gitSync.subPath }}/* dags
+
+    RUN echo "AUTH_ROLE_PUBLIC = 'Admin'" >> /opt/airflow/webserver_config.py
+    ENV AWS_DEFAULT_REGION {{ .Values.region }}
+    ENV AIRFLOW_CONN_HIVESERVER2_DEFAULT hiveserver2://sparkubi-thrift.spark.svc.cluster.local:10000
+    ENV AIRFLOW__CORE__PARALLELISM 64
+    ENV AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG 32
+    ENV AIRFLOW__API__AUTH_BACKEND airflow.api.auth.backend.basic_auth
+    # below available from Airflow 2.3: note plural variable change
+    # ENV AIRFLOW__API__AUTH_BACKENDS airflow.api.auth.backend.session
+

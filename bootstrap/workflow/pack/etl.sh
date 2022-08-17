@@ -1,15 +1,20 @@
 #!/bin/bash
 . runtime.sh
 
-cd ../monitor
-dap ./pre-install.sh
-dap ./install.sh
-
+# bootstrap first for dependencies (Spark SQL, RBAC)
 cd ../spark
 dap ./pre-install.sh
 dap ./install.sh -a sparkubi -p base
 
+cd ../monitor
+dap ./pre-install.sh
+dap ./install.sh
+
 cd ../superset
+dap ./pre-install.sh
+dap ./install.sh -p base
+
+cd ../airflow
 dap ./pre-install.sh
 dap ./install.sh -p base
 

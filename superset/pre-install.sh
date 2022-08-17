@@ -39,7 +39,7 @@ cat <<EOF | aws ecr put-lifecycle-policy --repository-name $superset_repo \
                "tagStatus": "untagged",
                "countType": "sinceImagePushed",
                "countUnit": "days",
-               "countNumber": 30
+               "countNumber": 15
            },
            "action": {
                "type": "expire"

@@ -14,6 +14,8 @@ if [ -n "$lbs" ]; then
         echo "DaP ~ deleting $lb"
         aws elbv2 delete-load-balancer --load-balancer-arn $lb
     done
+    echo "DaP ~ time buffer to terminate gracefully: 20s"
+    sleep 20  # temporize error: 'TG currently in use by a listener or a rule' 
 fi
 
 # Target Groups
@@ -27,7 +29,8 @@ if [ -n "$tgs" ]; then
         echo "DaP ~ deleting $tg"
         aws elbv2 delete-target-group --target-group-arn $tg
     done
-    sleep 3  # buffer to prevent DependencyViolation error when deleting SGs
+    echo "DaP ~ time buffer to terminate gracefully: 20s"
+    sleep 20  # temporize DependencyViolation error when deleting SGs
 fi
 
 # Security Groups

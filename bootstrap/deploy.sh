@@ -14,8 +14,17 @@ echo
     . ../DaP/load_ENV.sh
     : ${DaP_PACK:=`env_path $DaP_ENV/cluster/PACK`}
     [ $DaP_PACK != none ] && {
+        echo
+        echo '#################### DaP Applications ####################'
+        echo
         echo "DaP ~ installing $DaP_PACK apps."
         ./workflow/pack/$DaP_PACK.sh
+        [ $DaP_PACK = etl ] && {
+            echo
+            echo '#################### DaP Pipelines ####################'
+            echo
+            echo "DaP ~ ready for dapps"
+        }
     }
 }
 

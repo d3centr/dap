@@ -1,22 +1,17 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Release.Name }}-table-creations
-  annotations:
-    argocd.argoproj.io/hook: {{ .Values.metadata }}
-    helm.sh/hook-weight: "0"
-    helm.sh/hook-delete-policy: before-hook-creation
+  name: {{ .Release.Name }}-rated-table
 spec:
   template:
     spec:
       restartPolicy: Never
       serviceAccountName: spark
       containers:
-      - name: {{ .Release.Name }}-table-creations
-        # kubectl available in sparkubi-builder to attach master
-        image: {{ .Values.global.registry }}:sparkubi-builder
+      - name: {{ .Release.Name }}-rated-table
+        # kubectl available in builder to bootstrap job
+        image: {{ .Values.global.registry }}:{{ .Release.Name }}-builder-{{ .Values.global.appVersion }}
         imagePullPolicy: Always
-        workingDir: /opt/spark/work-dir/dap/spark 
         # pass REGISTRY environment variable to submit script
         envFrom:
         - configMapRef:
@@ -24,31 +19,26 @@ spec:
         command:
         - bash
         - -c
-        - ./submit.sh -c init uniswap script rated_swaps &&
-            ./submit.sh -c init uniswap script day_swaps
+        - ./submit.sh -c init uniswap script rated_swaps
 ---
 apiVersion: batch/v1
-kind: CronJob
+kind: Job
 metadata:
-  name: {{ .Release.Name }}-partition-updates
+  name: {{ .Release.Name }}-day-table
 spec:
-  schedule: "0 4 * * *"
-  jobTemplate:
+  template:
     spec:
-      template:
-        spec:
-          restartPolicy: OnFailure
-          serviceAccountName: spark
-          containers:
-          - name: {{ .Release.Name }}-partition-updates
-            image: {{ .Values.global.registry }}:sparkubi-builder
-            imagePullPolicy: Always
-            workingDir: /opt/spark/work-dir/dap/spark 
-            envFrom:
-            - configMapRef:
-                name: env
-            command:
-            - bash
-            - -c
-            - ./submit.sh -c init uniswap script partition_updates
+      restartPolicy: Never
+      serviceAccountName: spark
+      containers:
+      - name: {{ .Release.Name }}-day-table
+        image: {{ .Values.global.registry }}:{{ .Release.Name }}-builder-{{ .Values.global.appVersion }}
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: env
+        command:
+        - bash
+        - -c
+        - ./submit.sh -c init uniswap script day_swaps
 

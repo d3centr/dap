@@ -23,6 +23,7 @@ if [[ $REPLY =~ ^YES$ ]]; then
         --filters Name=tag:Name,Values=$pg_volume --query Volumes[*].VolumeId --output text`
     
     aws ecr delete-repository --repository-name $cluster/airflow --force
+    aws ecr delete-repository --repository-name $cluster/airflow/cache --force
     aws s3 rb s3://$airflow_bucket --force
     aws s3 rb s3://$data_bucket --force
     aws ec2 delete-volume --volume-id $pg_volume_id

@@ -25,13 +25,4 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/command/-
         value: --insecure
-  - target:
-      group: ""
-      version: v1
-      kind: Service
-      name: argocd-server
-    patch: |-
-      - op: replace
-        path: /spec/type
-        value: NodePort
   - path: plugin-patch.yaml
