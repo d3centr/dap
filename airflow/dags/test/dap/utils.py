@@ -31,7 +31,7 @@ def eth_ip_test():
     print(f"ACTUAL: {actual}")
     print(f"EXPECTED one of: {expected}")
     print(f"FIXED IP (persistent network interface): {fixed_ip}")
-    # default instance name should point to network export 'dap-network-eth-ip'
+    # default instance name should point to network export 'dap-network-geth-ip'
     assert(actual in expected and fixed_ip in expected)
 
 @task()

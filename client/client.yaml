@@ -1,0 +1,395 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Client:
+    Type: String
+    AllowedValues:
+      - geth
+      - prysm
+      - lighthouse
+  Network:
+    Type: String
+    Default: mainnet
+  Build:
+    Type: String
+    Description: "Change InstanceSize to force version update in a running client."
+  Image:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2
+  InstanceSize:
+    Type: String
+    Default: xlarge
+    Description: "'large' for cost-optimized node, 'xlarge' to sync twice faster, '2xlarge' to extract events"
+  HotVolumeSize:
+    Type: Number
+  ColdVolumeSize:
+    Type: Number
+  ColdVolumeType:
+    Type: String
+    Default: gp3
+    AllowedValues:
+      - gp3
+      - sc1
+  Endpoint:
+    Type: String
+    Default: none
+  JsonWebToken:
+    Type: String
+    Default: none
+  SecurityGroups:
+    Type: CommaDelimitedList
+  NetRestrict:
+    Type: String
+    Default: false
+    Description: allow peers from AWS networks only (unsecure)
+    AllowedValues:
+      - true
+      - false
+
+Conditions:
+  CreateColdVolume: 
+    !Not [!Equals [!Ref ColdVolumeSize, 0]]
+
+Resources:
+  HotVolume:
+    Type: AWS::EC2::Volume
+    Properties: 
+      AvailabilityZone: !Select [0, !GetAZs '']
+      VolumeType: gp3
+      Size: !Ref HotVolumeSize
+      Tags: 
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-HotVolume
+  ColdVolume:
+    Condition: CreateColdVolume
+    Type: AWS::EC2::Volume
+    Properties: 
+      AvailabilityZone: !Select [0, !GetAZs '']
+      VolumeType: !Ref ColdVolumeType
+      Size: !Ref ColdVolumeSize
+      Tags: 
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ColdVolume
+  SpotFleet: 
+    Type: AWS::EC2::SpotFleet
+    Properties:
+      SpotFleetRequestConfigData:
+        AllocationStrategy: lowestPrice
+        InstanceInterruptionBehavior: terminate
+        TargetCapacity: 1
+        IamFleetRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/spotfleet.amazonaws.com/AWSServiceRoleForEC2SpotFleet
+        LaunchTemplateConfigs:
+          - LaunchTemplateSpecification:
+              LaunchTemplateId: !Ref LaunchTemplate
+              Version: !GetAtt LaunchTemplate.LatestVersionNumber
+            Overrides:
+              - SubnetId: !ImportValue dap-network-subnet-a
+          - LaunchTemplateSpecification:
+              LaunchTemplateId: !Ref LaunchTemplate
+              Version: !GetAtt LaunchTemplate.LatestVersionNumber
+            Overrides:
+              - SubnetId: !ImportValue dap-network-subnet-a
+                InstanceType: !Join ['', [m5d., !Ref InstanceSize]]
+          - LaunchTemplateSpecification:
+              LaunchTemplateId: !Ref LaunchTemplate
+              Version: !GetAtt LaunchTemplate.LatestVersionNumber
+            Overrides:
+              - SubnetId: !ImportValue dap-network-subnet-a
+                InstanceType: !Join ['', [m5n., !Ref InstanceSize]]
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - ec2.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref ManagedPolicy
+  ManagedPolicy: 
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - ssm:UpdateInstanceInformation
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+              - ec2:DescribeVolumes
+              - ec2:DescribeInstanceStatus
+              - ec2:DescribeNetworkInterfaceAttribute
+              - ec2:DescribeNetworkInterfaces
+            Resource:
+              - "*"
+          - Effect: Allow
+            Action:
+              - ec2:AttachVolume
+            Resource:
+              - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+              - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/${HotVolume}
+              - !If
+                - CreateColdVolume
+                - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/${ColdVolume}
+                - !Ref AWS::NoValue
+            Condition:
+              StringLike:
+                "ec2:ResourceTag/Name": !Sub ${AWS::StackName}*
+          - Effect: Allow
+            Action:
+              - ec2:AssociateAddress
+              - ec2:AttachNetworkInterface
+            Resource:
+              - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:*
+            Condition:
+              "ForAnyValue:StringEquals":
+                "ec2:ResourceTag/Name":
+                  # EIP
+                  - !Ref AWS::StackName
+                  # ENI defined in dap-network
+                  - !Sub dap-${Client}-${Network}
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub arn:aws:s3:::dap-${AWS::Region}-client-${AWS::AccountId}/scripts/${Client}/install.sh
+              - !Sub arn:aws:s3:::dap-${AWS::Region}-client-${AWS::AccountId}/scripts/${Client}/client.sh
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub arn:aws:s3:::dap-${AWS::Region}-client-${AWS::AccountId}
+              - !Sub arn:aws:s3:::dap-${AWS::Region}-client-${AWS::AccountId}/${Client}/${Network}/*
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+  EIP:
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+  # Do not add a network interface in launch template (attach at bootstrap), otherwise:
+  # - AWS no longer auto-assigns a public IP, breaking init scripts before EIP is associated
+  # - security groups cannot be specified in the launch template itself
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        ImageId: !Ref Image
+        InstanceType: !Join ['', [m5., !Ref InstanceSize]]
+        SecurityGroupIds: !Ref SecurityGroups 
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Ref AWS::StackName
+        # MIME multi-part file adds a cloud-config to run user data not only during the first boot
+        UserData:
+          Fn::Base64: !Sub |
+            Content-Type: multipart/mixed; boundary="//"
+            MIME-Version: 1.0
+            
+            --//
+            Content-Type: text/cloud-config; charset="us-ascii"
+            MIME-Version: 1.0
+            Content-Transfer-Encoding: 7bit
+            Content-Disposition: attachment; filename="cloud-config.txt"
+            
+            #cloud-config
+            cloud_final_modules:
+            - [scripts-user, always]
+            
+            --//
+            Content-Type: text/x-shellscript; charset="us-ascii"
+            MIME-Version: 1.0
+            Content-Transfer-Encoding: 7bit
+            Content-Disposition: attachment; filename="userdata.txt"
+            
+            #!/bin/bash
+            /opt/aws/bin/cfn-init -s ${AWS::StackName} -r LaunchTemplate --region ${AWS::Region} -c client
+            --//--
+    Metadata:
+    # LaunchTemplate metadata allows configuration updates with instance changes.
+      AWS::CloudFormation::Authentication: 
+        S3AccessCreds: 
+          type: S3
+          buckets: 
+            - !Sub dap-${AWS::Region}-client-${AWS::AccountId}
+          roleName: !Ref InstanceRole
+      AWS::CloudFormation::Init:
+        configSets:
+          client:
+            - bootstrap
+        bootstrap:
+          files:
+            /tmp/bootstrap/attach-network-interfaces.sh:
+              content: |
+                #!/bin/bash
+                set -eux
+                exec >> /var/log/bootstrap.log 2>&1
+
+                instance_id=`curl http://169.254.169.254/latest/meta-data/instance-id`
+
+                aws ec2 associate-address --instance-id $instance_id --allocation-id $EIP
+
+                detached_interface () {
+                    local attachment_id=`aws ec2 describe-network-interface-attribute \
+                        --network-interface-id $ENI --attribute attachment \
+                        --query Attachment.AttachmentId --output text`
+                    [ $attachment_id = None ]
+                }
+                until detached_interface; do sleep 1; done
+                # When rebooting the same instance type, it can happen that AWS leaves the ENI attached:
+                # checking the edge case in case attachment fails.
+                aws ec2 attach-network-interface --device-index 1 --instance-id $instance_id \
+                    --network-interface-id $ENI || {
+                        if [ "`aws ec2 describe-network-interfaces --filters \
+                                Name=attachment.device-index,Values=1 \
+                                Name=network-interface-id,Values=$ENI \
+                                Name=attachment.instance-id,Values=$instance_id \
+                                --query NetworkInterfaces[*].Status --output text`" = in-use ]; then
+                            echo "attachment failed because $ENI is already attached: proceeding"
+                        else
+                            exit 1
+                        fi
+                    }
+              mode: "000755"
+            /tmp/bootstrap/mount-volumes.sh:
+              content: |
+                #!/bin/bash
+                set -eux
+                exec >> /var/log/bootstrap.log 2>&1
+
+                # wait for previous instance to go down and detach volumes of blockchain data gracefully
+                for volume in ${HotVolume} ${ColdVolume}; do
+                    while [ -n "`aws ec2 describe-volumes --volume-ids $volume --output text \
+                        --query Volumes[*].Attachments[*].InstanceId`" ]; do
+                        sleep 1
+                    done
+                done
+
+                instance_id=`curl http://169.254.169.254/latest/meta-data/instance-id`
+                aws ec2 attach-volume --volume-id ${HotVolume} --instance-id $instance_id --device /dev/sdf
+                # make sure device name is symlinked:
+                # fixes mount errors like '/mnt/geth: special device /dev/sdf does not exist'
+                while [ `readlink -f /dev/sdf` = /dev/sdf ]; do sleep 1; done
+                hot_device=`readlink -f /dev/sdf`
+
+                if [ -n "${ColdVolume}" ]; then
+                    aws ec2 attach-volume --volume-id ${ColdVolume} --instance-id $instance_id --device /dev/sdg
+                    while [ `readlink -f /dev/sdg` = /dev/sdg ]; do sleep 1; done
+                    cold_device=`readlink -f /dev/sdg`
+                else
+                    cold_device=''
+                fi
+
+                for device in $hot_device $cold_device; do
+                    # If output isn't more informative than "$device: data", there is no file system on the device.
+                    if file -s $device | grep -q '^'$device': data$'; then /sbin/mkfs.xfs $device; fi
+                done
+
+                mkdir -p /mnt/data /mnt/freezer
+                mount $hot_device /mnt/data
+                if [ -n "$cold_device" ]; then mount $cold_device /mnt/freezer; fi
+              mode: "000755"
+            /tmp/bootstrap/sync-backup.sh:
+              content: !Sub |
+                #!/bin/bash
+                set -eux
+                exec >> /var/log/bootstrap.log 2>&1
+
+                s3_path=s3://dap-${AWS::Region}-client-${AWS::AccountId}/${Client}/${Network}
+                fs_path=/mnt
+
+                s3_bytes=`aws s3 ls --summarize --recursive $s3_path | 
+                    awk '$1=="Total" && $2=="Size:"{print $3}'`
+
+                # file system size replicating aws s3 ls -—summarize (excludes folder bytes)
+                fs_bytes=`find $fs_path -type f -print0 | 
+                    du --files0-from=- --bytes | 
+                    cut -f1 | 
+                    paste -sd+ | 
+                    bc`
+                if [ -z "$fs_bytes" ]; then fs_bytes=0; fi
+
+                GiB_bytes=1073741824
+                if [ `tr -d - <<< $(($fs_bytes - $s3_bytes))` -lt $GiB_bytes ]; then
+                    echo "less than a GiB difference between $fs_path and $s3_path: no backup sync"
+                elif [ $fs_bytes -lt $s3_bytes ]; then
+                    echo "lower number of bytes locally than in s3: sync from $s3_path to $fs_path"
+                    aws s3 sync $s3_path $fs_path --delete
+                elif [ $fs_bytes -gt $s3_bytes ]; then
+                    echo "greater number of bytes locally than in s3: sync from $fs_path to $s3_path"
+                    aws s3 sync $fs_path $s3_path --delete
+                fi
+              mode: "000755"
+            /tmp/bootstrap/install.sh:
+              source: !Sub https://dap-${AWS::Region}-client-${AWS::AccountId}.s3.${AWS::Region}.amazonaws.com/scripts/${Client}/install.sh
+              mode: "000755"
+            /etc/systemd/system/client.sh:
+              source: !Sub https://dap-${AWS::Region}-client-${AWS::AccountId}.s3.${AWS::Region}.amazonaws.com/scripts/${Client}/client.sh
+              mode: "000755"
+            /etc/systemd/system/client.service:
+              content: !Sub |
+                [Unit]
+                Description=Blockchain Client
+                After=network.target
+                [Service]
+                Environment=Build=${Build} Network=${Network} NetRestrict=${NetRestrict} Endpoint=${Endpoint}
+                ExecStart=/etc/systemd/system/client.sh
+                Restart=always
+                RestartSec=5s
+              mode: "000644"
+            /etc/profile.d/env.sh:
+              content: !Sub |
+                export PATH=$PATH:/mnt/data/${Build}
+              mode: "000755"
+          commands:
+            00_token:
+              test: !Sub "test ${JsonWebToken} != none"
+              command: !Sub "echo ${JsonWebToken} > /jwt.hex"
+            01_attach_network_interfaces:
+              command: "/tmp/bootstrap/attach-network-interfaces.sh"
+              env:
+                AWS_DEFAULT_REGION: !Ref "AWS::Region"
+                EIP: !GetAtt EIP.AllocationId
+                ENI: 
+                  Fn::ImportValue: !Sub dap-network-${Client}-eni
+            02_mount_volumes:
+              command: "/tmp/bootstrap/mount-volumes.sh"
+              env:
+                AWS_DEFAULT_REGION: !Ref "AWS::Region"
+                HotVolume: !Ref HotVolume
+                ColdVolume: !If [CreateColdVolume, !Ref ColdVolume, ""]
+            03_sync_backup:
+              command: "/tmp/bootstrap/sync-backup.sh"
+            04_install:
+              command: "/tmp/bootstrap/install.sh"
+              env:
+                Build: !Ref Build
+            05_start:
+              command: |
+                systemctl daemon-reload
+                systemctl enable client --now
+
+Outputs:
+  PublicIP:
+    Value: !Ref EIP
+    Export:
+      Name: !Sub dap-${Client}-public-ip
+

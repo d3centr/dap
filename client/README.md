@@ -3,20 +3,33 @@
 ### Create Network
 `./stack.sh network.yaml`
 
+### Deploy Prysm
+`./stack.sh prysm.yaml` (`InstanceSize=large` default)
+
+On a first deployment, database won't be backed in s3. You might want to:
+1) add `InstanceSize=2xlarge` argument to the command above to speed up initial sync;
+2) wait for this client to sync.
+
+> If you wish to deploy Lighthouse beacon client instead, you need to bring your own knowledge, e.g:\
+Lighthouse is not going to go through the initial sync without an execution client, etc...
 ### Deploy Geth
-`./stack.sh geth.yaml InstanceSize=xlarge NetRestrict=false`
-- the same command can update an existing stack
+`./stack.sh geth.yaml`
+- the same command can update an existing stack, Key=value parameters are optional:\
+`./stack.sh geth.yaml InstanceSize=xlarge BeaconClient=prysm NetRestrict=false  # showing default values`
 
-**Caveat**: change `InstanceSize` to force a Geth version upgrade in a running client.
+**Caveat**: change `InstanceSize` to force a version upgrade in a running client.\
+You will always be prompted to confirm the version of a client to install.
 
-*Monitoring your blockchain client*: a Geth dashboard is available in Grafana but requires a running DaP cluster.\
-You can also open a shell on your node: select the instance in EC2 console and connect with Session Manager.
+*monitoring blockchain clients*
+
+- Dashboards are available in Grafana. They require a running DaP cluster.
+- A shell can also be opened on nodes: select the instance in EC2 console and connect with Session Manager.
 ```bash
 sudo su  # get rights to access system logs
 cat /var/log/cfn-init.log  # shows how bootstrap steps went
 cat /var/log/bootstrap.log  # see logs inside those steps (debug)
-journalctl -u geth -fo cat  # watch geth logs
-geth attach /mnt/geth/geth.ipc  # open geth console
+journalctl -u client -fo cat  # watch client logs
+geth attach /mnt/data/mainnet/geth.ipc  # open geth console
 ```
 **Tip**: in geth console, `debug.vmodule('rpc=5')` activates RPC debug logs.
 

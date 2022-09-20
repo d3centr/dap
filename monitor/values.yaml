@@ -27,6 +27,15 @@ grafana:
         allowUiUpdates: true
         options:
           path: /var/lib/grafana/dashboards/default
+      - name: client
+        orgId: 1
+        folder: Client
+        type: file
+        disableDeletion: false
+        editable: true
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards/client
 
 prometheus:
   pushgateway:
@@ -43,17 +52,25 @@ prometheus:
     persistentVolume:
       enabled: false
     extraConfigmapMounts:
-      - name: eth-sd
-        mountPath: /mnt
-        configMap: eth-sd
+      - name: sd
+        mountPath: /mnt/targets
+        configMap: sd
   serverFiles:
     prometheus.yml:
       scrape_configs:
-        - job_name: eth-nodes
+        - job_name: geth-nodes
           metrics_path: /debug/metrics/prometheus
           file_sd_configs:
             - files:
-              - /mnt/eth-targets.json
+              - /mnt/targets/geth.json
+        - job_name: lighthouse-nodes
+          file_sd_configs:
+            - files:
+              - /mnt/targets/lighthouse.json
+        - job_name: prysm-nodes
+          file_sd_configs:
+            - files:
+              - /mnt/targets/prysm.json
         - job_name: kubelet
           kubernetes_sd_configs:
           - role: node

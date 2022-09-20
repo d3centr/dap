@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sd
+data:
+  geth.json: |
+    [
+      {
+        "labels": {
+          "job": "geth-nodes"
+        },
+        "targets": [
+          "{{ .Values.ethIp }}:6060"
+        ]
+      }
+    ]
+  lighthouse.json: |
+    [
+      {
+        "labels": {
+          "job": "lighthouse-nodes"
+        },
+        "targets": [
+          "{{ .Values.lighthouseIp }}:5054"
+        ]
+      }
+    ]
+  prysm.json: |
+    [
+      {
+        "labels": {
+          "job": "prysm-nodes"
+        },
+        "targets": [
+          "{{ .Values.prysmIp }}:8080"
+        ]
+      }
+    ]
+

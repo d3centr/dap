@@ -6,10 +6,10 @@ source ../DaP/load_ENV.sh
 env_script=workflow/aws/lib/env.sh
 if $DaP_INGRESS; then . $env_script --dns; else . $env_script; fi
 
-ETHEREUM_CLIENT=dap-geth
-ETHEREUM_IP=`aws cloudformation list-exports \
-    --query "Exports[?Name=='dap-network-eth-ip'].Value" \
-    --output text`
+CLIENT_SUFFIX=geth
+ETHEREUM_CLIENT=dap-$CLIENT_SUFFIX
+ETHEREUM_IP=`aws cloudformation list-exports --output text \
+    --query "Exports[?Name=='dap-network-"$CLIENT_SUFFIX"-ip'].Value"`
 
 subnets=`aws cloudformation list-exports \
     --query "Exports[?starts_with(Name, 'dap-network-subnet-')].[Name, Value]" \

@@ -77,6 +77,13 @@ Resources:
       RouteTableId: !Ref RouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
+
+  ClientBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub dap-${AWS::Region}-client-${AWS::AccountId}
+
+  # Geth
   ListenerSG:
     Type: AWS::EC2::SecurityGroup
     Properties: 
@@ -132,17 +139,107 @@ Resources:
           IpProtocol: tcp
           ToPort: 6060
       VpcId: !Ref VPC
+  AuthrpcSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-authrpc
+      GroupDescription: !Sub ${AWS::StackName}-authrpc
+      SecurityGroupIngress:
+        - CidrIp: 192.168.0.0/17
+          FromPort: 8551
+          IpProtocol: tcp
+          ToPort: 8551
+      VpcId: !Ref VPC
   EthENI:
     Type: AWS::EC2::NetworkInterface
     Properties:
       Tags:
         # tag authorizing ec2:AttachNetworkInterface in dap-geth stack
         - Key: Name
-          Value: dap-geth
+          Value: dap-geth-mainnet
       GroupSet:
-        - !GetAtt HttpSG.GroupId
-        - !GetAtt WebSocketSG.GroupId
         - !GetAtt MetricsSG.GroupId
+        - !GetAtt AuthrpcSG.GroupId
+      SubnetId: !Ref SubnetA
+  EthENIIP:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      Name: /cfn/dap/network/geth/ip/eni
+      Type: String
+      Value: !GetAtt EthENI.PrimaryPrivateIpAddress
+
+  LighthouseSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-lighthouse
+      GroupDescription: !Sub ${AWS::StackName}-lighthouse
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 9000
+          IpProtocol: tcp
+          ToPort: 9000
+        - CidrIp: 0.0.0.0/0
+          FromPort: 9000
+          IpProtocol: udp
+          ToPort: 9000
+      VpcId: !Ref VPC
+  LighthouseMetricsSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-lighthouse-metrics
+      GroupDescription: !Sub ${AWS::StackName}-lighthouse-metrics
+      SecurityGroupIngress:
+        - CidrIp: 192.168.0.0/17
+          FromPort: 5054
+          IpProtocol: tcp
+          ToPort: 5054
+      VpcId: !Ref VPC
+  LighthouseENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Tags:
+        # tag authorizing ec2:AttachNetworkInterface in lighthouse stack
+        - Key: Name
+          Value: dap-lighthouse-mainnet
+      GroupSet:
+        - !GetAtt LighthouseMetricsSG.GroupId
+      SubnetId: !Ref SubnetA
+
+  PrysmSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-prysm
+      GroupDescription: !Sub ${AWS::StackName}-prysm
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 13000
+          IpProtocol: tcp
+          ToPort: 13000
+        - CidrIp: 0.0.0.0/0
+          FromPort: 12000
+          IpProtocol: udp
+          ToPort: 12000
+      VpcId: !Ref VPC
+  PrysmMetricsSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-prysm-metrics
+      GroupDescription: !Sub ${AWS::StackName}-prysm-metrics
+      SecurityGroupIngress:
+        - CidrIp: 192.168.0.0/17
+          FromPort: 8080
+          IpProtocol: tcp
+          ToPort: 8080
+      VpcId: !Ref VPC
+  PrysmENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Tags:
+        # tag authorizing ec2:AttachNetworkInterface in prysm stack
+        - Key: Name
+          Value: dap-prysm-mainnet
+      GroupSet:
+        - !GetAtt PrysmMetricsSG.GroupId
       SubnetId: !Ref SubnetA
 
 Outputs:
@@ -154,6 +251,8 @@ Outputs:
     Value: !Ref SubnetB
     Export:
       Name: !Sub ${AWS::StackName}-subnet-b
+
+  # Geth
   ListenerSG:
     Value: !GetAtt ListenerSG.GroupId
     Export:
@@ -173,9 +272,35 @@ Outputs:
   EthENI:
     Value: !GetAtt EthENI.Id
     Export:
-      Name: !Sub ${AWS::StackName}-eth-eni
+      Name: !Sub ${AWS::StackName}-geth-eni
   EthIP:
     Value: !GetAtt EthENI.PrimaryPrivateIpAddress
     Export:
-      Name: !Sub ${AWS::StackName}-eth-ip
+      Name: !Sub ${AWS::StackName}-geth-ip
+
+  LighthouseSG:
+    Value: !GetAtt LighthouseSG.GroupId
+    Export:
+      Name: !Sub ${AWS::StackName}-lighthouse-sg
+  LighthouseENI:
+    Value: !GetAtt LighthouseENI.Id
+    Export:
+      Name: !Sub ${AWS::StackName}-lighthouse-eni
+  LighthouseIP:
+    Value: !GetAtt LighthouseENI.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub ${AWS::StackName}-lighthouse-ip
+
+  PrysmSG:
+    Value: !GetAtt PrysmSG.GroupId
+    Export:
+      Name: !Sub ${AWS::StackName}-prysm-sg
+  PrysmENI:
+    Value: !GetAtt PrysmENI.Id
+    Export:
+      Name: !Sub ${AWS::StackName}-prysm-eni
+  PrysmIP:
+    Value: !GetAtt PrysmENI.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub ${AWS::StackName}-prysm-ip
 

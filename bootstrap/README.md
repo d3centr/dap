@@ -20,7 +20,7 @@ You can always follow Argo CD [instructions](https://argo-cd.readthedocs.io/en/s
 0. **Requirements**: admin rights in the cloud + a bash shell with docker and aws clis configured locally.\
 Run `aws configure` and specify region where DaP will be deployed or export `$AWS_PROFILE` to an existing configuration previously specified with `aws configure --profile <DaP AWS profile name>` (if not default).
 
-1. Create **Network** and deploy **Geth** node in this order from [client](/client) folder.
+1. Create **Network**, then deploy the consensus client **Prysm** and the execution client **Geth** in this order from [client](/client) folder.
 
 2. **K8s** provides computing capacity with autoscaling. Run `./deploy.sh` in this folder to create a cluster ready for applications. Process should take around 20 minutes. You can run `./destroy.sh` to delete the cluster when computation isn't required. As a rule of thumb, state is persisted in external EBS volumes and automatically reattached to the same new cluster.
 

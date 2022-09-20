@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   Client:
     Type: String
-    Default: geth
+    Default: lighthouse
   Network:
     Type: String
     Default: mainnet
@@ -11,19 +11,20 @@ Parameters:
     Type: String
   InstanceSize:
     Type: String
-    Default: xlarge
+    Default: large
+  # default disk sizes to be tuned
   HotVolumeSize:
     Type: Number
-    Default: 350
+    Default: 50
   ColdVolumeSize:
     Type: Number
-    Default: 450
+    Default: 50
+  Endpoint:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /cfn/dap/network/geth/ip/eni
   JsonWebToken:
-    Type : 'AWS::SSM::Parameter::Value<String>'
-    Default: /cfn/dap/prysm/mainnet/jwt
-  NetRestrict:
-    Type: String
-    Default: false
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /cfn/dap/lighthouse/mainnet/jwt
 
 Resources:
   Stack:
@@ -35,13 +36,10 @@ Resources:
         InstanceSize: !Ref InstanceSize
         HotVolumeSize: !Ref HotVolumeSize
         ColdVolumeSize: !Ref ColdVolumeSize
+        Endpoint: !Ref Endpoint
         JsonWebToken: !Ref JsonWebToken
-        NetRestrict: !Ref NetRestrict
         SecurityGroups: !Join 
           - ','
-          - - !ImportValue dap-network-listener-sg
-            - !ImportValue dap-network-discovery-sg
-            - !ImportValue dap-network-http-sg
-            - !ImportValue dap-network-ws-sg
+          - - !ImportValue dap-network-lighthouse-sg
       TemplateURL: !Sub https://dap-${AWS::Region}-client-${AWS::AccountId}.s3.${AWS::Region}.amazonaws.com/templates/client.yaml
 
