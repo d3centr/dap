@@ -17,8 +17,7 @@ argocd app create $namespace \
     --dest-namespace $namespace \
     --dest-server https://kubernetes.default.svc \
     --sync-policy $DaP_SYNC \
-    --self-heal \
-    --auto-prune \
+    `[ $DaP_SYNC != none ] && echo --auto-prune --self-heal` \
     -p ethIp=$ETH_IP \
     -p lighthouseIp=$LIGHTHOUSE_IP \
     -p prysmIp=$PRYSM_IP \

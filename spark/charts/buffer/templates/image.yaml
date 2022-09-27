@@ -1,10 +1,12 @@
+{{ $profile := tpl ".Values.global.profiles.{{ .Values.global.profile }}" . }}
+{{ $coldBuild := tpl (printf "{{ %s.coldBuild }}" $profile) . }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: kafka-image
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
-    helm.sh/hook-weight: "-1"
+    argocd.argoproj.io/hook: {{ $coldBuild }}
+    helm.sh/hook-weight: "1"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   template:
@@ -14,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: kafka-image
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:kafka-{{ .Values.kafkaVersion }}"
@@ -32,8 +34,8 @@ kind: ConfigMap
 metadata:
   name: kafka-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
-    helm.sh/hook-weight: "-1"
+    argocd.argoproj.io/hook: {{ $coldBuild }}
+    helm.sh/hook-weight: "1"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   Dockerfile: |
@@ -41,7 +43,9 @@ data:
 
     ARG KAFKA_VERSION={{ .Values.kafkaVersion }}
     ARG KAFKA_RELEASE={{ tpl .Values.kafkaRelease . }}
-    ARG URL=https://dlcdn.apache.org/kafka/$KAFKA_VERSION/$KAFKA_RELEASE.tgz
+    # recent version links downloads.apache.org or dlcdn.apache.org tend to break:
+    # stable download from https://archive.apache.org/dist/kafka/VERSION/RELEASE.tgz
+    ARG URL=https://archive.apache.org/dist/kafka/$KAFKA_VERSION/$KAFKA_RELEASE.tgz
 
     RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && \
         mkdir /opt/dap && curl -O $URL && tar -xzf $KAFKA_RELEASE.tgz -C /opt/dap && \

@@ -1,6 +1,9 @@
 #!/bin/bash
 
-/mnt/data/lighthouse beacon \
+client=/mnt/data/lighthouse
+chmod +x $client
+
+$client beacon \
     --network ${Network} \
     --target-peers 80 \
     --disable-upnp \

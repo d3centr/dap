@@ -18,11 +18,11 @@ argocd app create superset \
     --dest-namespace superset \
     --dest-server https://kubernetes.default.svc \
     --sync-policy $DaP_SYNC \
-    --self-heal \
-    --auto-prune \
+    `[ $DaP_SYNC != none ] && echo --auto-prune --self-heal` \
     --values profile/default.yaml \
     --values profile/$profile.yaml \
     --values values.yaml \
+    -p kanikoVersion=$DaP_KANIKO \
     -p superset.image.repository=$REGISTRY/superset \
     -p superset.postgresql.primary.persistence.existingClaim=$PG_VOLUME
 

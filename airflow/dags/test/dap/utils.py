@@ -46,16 +46,19 @@ def pool_check(client, pool):
 
 TRIGGER_TEST_KEY = 'test/run/default'
 @task()
-def trigger_test(explicit_params=False):
+def trigger_test(explicit_params=False, last_block=EPOCH_LENGTH):
     bucket = os.environ['TEST_BUCKET']
 
-    if s3fs.S3FileSystem().exists(f'{bucket}/{TRIGGER_TEST_KEY}'):
+    def trigger_key_exists():
+        return s3fs.S3FileSystem().exists(f'{bucket}/{TRIGGER_TEST_KEY}')
+
+    if trigger_key_exists():
         boto3.resource('s3').Object(bucket, TRIGGER_TEST_KEY).delete()
 
     expected = {
         # hardcoded and shared keys from parent to child dag in callable:
         # passed as arguments from previous operator and expanded by PythonOp
-        'last_block': EPOCH_LENGTH,
+        'last_block': last_block,
         'epoch': 0
     }
     # params should be passed to triggered dag
@@ -72,6 +75,7 @@ def trigger_test(explicit_params=False):
     id = f"{context['dag_run'].run_id}_{context['task_instance'].try_number}"
     trigger_kwargs = {
         'wait_for_completion': True,
+        'poke_interval': 5,
         'trigger_run_id': f'{id}_{explicit_params}'  # unique id for multiple runs
     }
     # copy expected so object isn't affected by tested function
@@ -85,21 +89,27 @@ def trigger_test(explicit_params=False):
     else:
         trigger('test_Trigger', expected_copy, 
             trigger_kwargs=trigger_kwargs).execute(expected_copy)
+   
+    if last_block >= EPOCH_LENGTH:
+ 
+        # flatten config like dag trigger
+        params = expected.pop('params')
+        params.pop('epoch')  # epoch should be taken from output of previous op
+        expected.update(params)
+        print(f'EXPECTED: {expected}')
     
-    # flatten config like dag trigger
-    params = expected.pop('params')
-    params.pop('epoch')  # epoch should be taken from output of previous op
-    expected.update(params)
-    print(f'EXPECTED: {expected}')
+        actual = json.loads(
+            boto3.resource('s3').Object(
+                bucket, 
+                TRIGGER_TEST_KEY
+            ).get()['Body'].read()
+        )
+        print(f'ACTUAL: {actual}')
+        assert(actual == expected)
 
-    actual = json.loads(
-        boto3.resource('s3').Object(
-            bucket, 
-            TRIGGER_TEST_KEY
-        ).get()['Body'].read()
-    )
-    print(f'ACTUAL: {actual}')
-    assert(actual == expected)
+    else:
+        # last_block is within epoch 0: current epoch should not trigger further
+        assert(not trigger_key_exists())
 
 @dag(
     schedule_interval=None, 
@@ -149,7 +159,9 @@ def dap_Utils_ok():
         ) >> pool_check('{{ params.eth_client }}', 'scale-test')
     job_metadata_test()
     # test implicit and explicit params: does not support parallel execution
-    trigger_test() >> trigger_test(explicit_params=True)
+    trigger_test() >> trigger_test(
+        explicit_params=True
+    ) >> trigger_test(last_block=EPOCH_LENGTH - 1)  # test current epoch 0
 
 test_dag = dap_Utils_ok()
 

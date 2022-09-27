@@ -31,5 +31,13 @@ data:
         <name>hive.metastore.warehouse.dir</name>
         <value>file:///tmp</value>
       </property>
+      <property>
+        <name>hive.input.format</name>
+        <value>io.delta.hive.HiveInputFormat</value>
+      </property>
+      <property>
+        <name>hive.tez.input.format</name>
+        <value>io.delta.hive.HiveInputFormat</value>
+      </property>
     </configuration>
 

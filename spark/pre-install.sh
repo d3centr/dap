@@ -91,23 +91,38 @@ subjects:
 EOF
 
 
-# Create global environment variables in spark namespace.
+# Create global environment variables and main deploy key in spark namespace.
 kubectl apply view-last-applied configmap -n default env -o yaml | \
     sed 's/namespace: default/namespace: spark/' | \
     kubectl apply -f -
 
+: ${DaP_SSH_KEY_NAME:=`env_path $DaP_ENV/REPO/SSH_KEY_NAME`}
+[ -f /root/.dap/$DaP_SSH_KEY_NAME ] &&
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dap-deploy-key
+  namespace: spark
+stringData:
+  key: |
+`sed 's/^/    /' /root/.dap/$DaP_SSH_KEY_NAME`
+EOF
 
-# Create sink bucket and docker registries.
 
-delta_bucket=$CLUSTER-$REGION-delta-$ACCOUNT
-aws s3api head-bucket --bucket $delta_bucket || aws s3 mb s3://$delta_bucket
-echo "s3://$delta_bucket"
+# Create sink + charts buckets and docker registries.
+
+for name in delta charts; do
+    bucket=$CLUSTER-$REGION-$name-$ACCOUNT
+    aws s3api head-bucket --bucket $bucket || aws s3 mb s3://$bucket
+    echo "s3://$bucket"
+done
 
 spark_repo=$CLUSTER/spark
-aws ecr describe-repositories --repository-names $spark_repo ||
-    aws ecr create-repository --repository-name $spark_repo
-aws ecr describe-repositories --repository-names $spark_repo/cache ||
-    aws ecr create-repository --repository-name $spark_repo/cache
+for repo in $spark_repo $spark_repo/cache; do
+    aws ecr describe-repositories --repository-names $repo ||
+        aws ecr create-repository --repository-name $repo
+done
 
 cat <<EOF | aws ecr put-lifecycle-policy --repository-name $spark_repo \
     --lifecycle-policy-text file:///dev/stdin

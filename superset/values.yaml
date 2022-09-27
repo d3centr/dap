@@ -9,15 +9,17 @@ superset:
       FEATURE_FLAGS = {
         "ENABLE_TEMPLATE_PROCESSING": True
       } 
-    custom_home: |
-      from flask import redirect
-      from flask_appbuilder import expose, IndexView
-      from superset.superset_typing import FlaskResponse
-      class SupersetDashboardIndexView(IndexView):
-          @expose("/")
-          def index(self) -> FlaskResponse:
-              return redirect("/dashboard/list")
-      FAB_INDEX_VIEW = f"{SupersetDashboardIndexView.__module__}.{SupersetDashboardIndexView.__name__}"
+    # set the dashboard list as homepage: ! this will crash the server if db has not been initialized !
+    # -> do not uncomment on a blank volume
+    # custom_home: |
+    #   from flask import redirect
+    #   from flask_appbuilder import expose, IndexView
+    #   from superset.superset_typing import FlaskResponse
+    #   class SupersetDashboardIndexView(IndexView):
+    #       @expose("/")
+    #       def index(self) -> FlaskResponse:
+    #           return redirect("/dashboard/list")
+    #   FAB_INDEX_VIEW = f"{SupersetDashboardIndexView.__module__}.{SupersetDashboardIndexView.__name__}"
   extraConfigs:
     import_datasources.yaml: |
         databases:
@@ -25,17 +27,19 @@ superset:
           sqlalchemy_uri: hive://hive@sparkubi-thrift.spark.svc.cluster.local:10000
   init:
     # must match the user allocation of dashboards in dapp/superset/installer.yaml
+    # best to leave admin user for out-of-the-box cli export: "admin" is hardcoded in cli/importexport.py
     adminUser:
-      username: dap
-      password: dap
+      username: admin
+      password: admin
     initscript: |-
       #!/bin/sh
       set -eu
       echo "Upgrading DB schema..."
-      superset db upgrade || echo "DB upgrade EXIT CODE: $?"
-      # TODO: catch the error code printed above for a safer "hard" fix if it occurs again
+      superset db upgrade
+      # "hard" fix for issue which occurred randomly below chart v0.7.6:
+      # any error catch to be avoided on stateful volumes
       # superset db upgrade || {
-      #     # hard fix for missing ab_permission_view_role, can occur on new volumes
+      #     # missing ab_permission_view_role can occur on new volumes
       #     rm -r /app/superset/migrations
       #     superset db init
       #     superset db upgrade

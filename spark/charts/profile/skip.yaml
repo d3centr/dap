@@ -1,4 +1,0 @@
-global:
-  coldBuild: Skip
-  hotBuild: Skip
-

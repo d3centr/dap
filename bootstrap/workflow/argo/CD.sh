@@ -5,6 +5,8 @@ set -euo pipefail
 # . runtime.sh
 # run_workflow . workflow/aws/lib/env.sh --dns\; workflow/argo/CD.sh blue
 source ../DaP/load_ENV.sh
+: ${DaP_REPO:=`env_path $DaP_ENV/REPO`}
+: ${DaP_SSH_KEY_NAME:=`env_path $DaP_ENV/REPO/SSH_KEY_NAME`}
 : ${DaP_INGRESS:=`env_path $DaP_ENV/cluster/INGRESS`}
 
 color=$1
@@ -15,14 +17,8 @@ export DaP_ARGO_CD=${DaP_ARGO_CD:=`env_path $DaP_ENV/version/ARGO_CD`}
 envsubst < workflow/argo/tpl.kustomization.yaml > workflow/argo/kustomization.yaml
 kubectl apply -k workflow/argo
 
-# load private repo configuration
-: ${DaP_REPO:=`env_path $DaP_ENV/REPO`}
-: ${DaP_PRIVATE:=`env_path $DaP_ENV/REPO/PRIVATE`}
-: ${DaP_SSH_KEY_NAME:=`env_path $DaP_ENV/REPO/private/SSH_KEY_NAME`}
-echo "DaP ~ CICD origin $DaP_REPO configured; private? $DaP_PRIVATE."
-
-# private flag before sed command ensures that key file exists
-[ $DaP_PRIVATE = false ] ||
+# assuming that any repo not using the https protocol is a ssh url
+grep -qv '^https://' <<< $DaP_REPO && [ -f /root/.dap/$DaP_SSH_KEY_NAME ] &&
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Secret

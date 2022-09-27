@@ -1,6 +1,7 @@
 package fyi.dap.sparkubi
 
 import java.math.MathContext
+import java.lang.NullPointerException
 
 import Conf.{MC, Rescale, Simplify}
 import Typecast.{BD, BD2, BD10}
@@ -58,24 +59,36 @@ object Arithmetic {
     def commonDNE(  // common Denominator & Numerator Encoding
         left: Fraction, right: Fraction): Tuple3[UBI, UBI, UBI] = {
 
-        if (left.denominator == right.denominator) {
+        try {
 
-            val (ln, rn) = commonEncoding(left.numerator, right.numerator)
+            if (left.denominator == right.denominator) {
 
-            (ln, rn, left.denominator)
+                val (ln, rn) = commonEncoding(left.numerator, right.numerator)
 
-        } else {
+                (ln, rn, left.denominator)
 
-            val denominator = multiply(left.denominator, right.denominator)
+            } else {
 
-            val (ln, rn) = commonEncoding(
-                multiply(left.numerator, right.denominator),
-                multiply(right.numerator, left.denominator)
-            )
+                val denominator = multiply(left.denominator, right.denominator)
 
-            (ln, rn, denominator)
+                val (ln, rn) = commonEncoding(
+                    multiply(left.numerator, right.denominator),
+                    multiply(right.numerator, left.denominator)
+                )
+
+                (ln, rn, denominator)
+
+            }
+
+        } catch {
+
+            case e: NullPointerException =>
+                Log.error(s"NPE in SparkUBI commonDNE(): left $left and/or right $right")
+                Log.error("null Fraction is undefined: fix NPE higher in the stack trace")
+                throw e
 
         }
+
     }
 
     def commonEncoding(left: UBI, right: UBI, 

@@ -1,20 +1,21 @@
 #!/bin/bash
-source ../bootstrap/app-init.sh
+source init.sh
 
-url=https://raw.githubusercontent.com/fluent/fluent-bit-kubernetes-logging/master
-kubectl apply -f $url/fluent-bit-service-account.yaml
-kubectl apply -f $url/fluent-bit-role.yaml
-kubectl apply -f $url/fluent-bit-role-binding.yaml
-
-export LOG_BUCKET=`kubectl apply view-last-applied cm -n logging env |
-    awk '$1~/LOG_BUCKET/{print $NF}'`
-
-envsubst '$LOG_BUCKET $REGION' < configmap.yaml | kubectl apply -f -
-
-export IMAGE=`aws ssm get-parameters-by-path \
+# $TAG is reserved in Fluent Bit s3_key_format (prepend IMAGE_)
+IFS=: read IMAGE IMAGE_TAG <<< "`aws ssm get-parameters-by-path \
     --path /aws/service/aws-for-fluent-bit \
     --query "Parameters[?Name=='/aws/service/aws-for-fluent-bit/stable'].Value" \
-    --output text`
+    --output text`"
 
-envsubst '$IMAGE' < daemonset.yaml | kubectl apply -f -
+export REGION IMAGE IMAGE_TAG
+envsubst '$LOG_BUCKET $REGION $IMAGE $IMAGE_TAG' < values.yaml.tpl | 
+    argocd app create log --values-literal-file /dev/stdin \
+        --upsert \
+        --repo $DaP_REPO \
+        --revision $DaP_BRANCH \
+        --path log \
+        --dest-namespace logging \
+        --dest-server https://kubernetes.default.svc \
+        --sync-policy $DaP_SYNC \
+        `[ $DaP_SYNC != none ] && echo --auto-prune --self-heal`
 

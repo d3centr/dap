@@ -2,10 +2,18 @@ apiVersion: v2
 name: sparkubi
 version: 0.1.0
 dependencies:
+- name: profile
+  version: 0.1.0
+  repository: file://../charts/profile
+  import-values:
+    - all
 - name: build
   version: 0.1.0
   repository: file://../charts/build
 - name: postgresql
   version: ~10.16.2
   repository: https://charts.bitnami.com/bitnami
+- name: chartmuseum
+  version: ~3.9.1
+  repository: https://chartmuseum.github.io/charts
 

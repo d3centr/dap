@@ -11,10 +11,10 @@ Parameters:
     Type: String
   InstanceSize:
     Type: String
-    Default: large
+    Default: xlarge
   HotVolumeSize:
     Type: Number
-    Default: 150
+    Default: 200
   ColdVolumeSize:
     Type: Number
     Default: 0
@@ -24,6 +24,9 @@ Parameters:
   JsonWebToken:
     Type: 'AWS::SSM::Parameter::Value<String>'
     Default: /cfn/dap/prysm/mainnet/jwt
+  EnableBackup:
+    Type: String
+    Default: false
 
 Resources:
   Stack:
@@ -37,6 +40,7 @@ Resources:
         ColdVolumeSize: !Ref ColdVolumeSize
         Endpoint: !Ref Endpoint
         JsonWebToken: !Ref JsonWebToken
+        EnableBackup: !Ref EnableBackup
         SecurityGroups: !Join 
           - ','
           - - !ImportValue dap-network-prysm-sg

@@ -14,18 +14,40 @@ spec:
       restartPolicy: Never
       containers:
       - name: {{ .Release.Name }}-base-build
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.airflow.defaultAirflowRepository }}:base-{{ .Values.airflow.airflowVersion }}"
-        - "--cache=true"
+        - "--cache=false"
+        env:
         volumeMounts:
         - name: dockerfile
           mountPath: /mnt
+        - name: dap
+          mountPath: /.dap/cluster
+        {{ range .Values.dapps }}
+        - name: {{ .dapp }}
+          mountPath: /.dap/pipeline 
+        {{ end }}
       volumes:
       - name: dockerfile
         configMap:
           name: {{ .Release.Name }}-base-dockerfile
+      - name: dap
+        secret:
+          secretName: dap-deploy-key
+          optional: true
+          defaultMode: 0444
+      {{ range .Values.dapps }}
+      - name: {{ .dapp }}
+        secret:
+          secretName: {{ .dapp }}-deploy-key
+          optional: true
+          defaultMode: 0444
+          items:
+          - key: key
+            path: {{ .dapp }}
+      {{ end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -48,10 +70,29 @@ data:
     USER airflow
     RUN pip install {{ join " " .Values.pipPackages }}
 
-    RUN git clone --single-branch --depth 1 \
+    # - 'dap' added at the end of git clone command to support arbitrary repo names
+    # - mkdir dags/test ensures that content is linked into 'test/dap' rather than 'test'
+    RUN GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /.dap/cluster/key' \
+        git clone --single-branch --depth 1 \
             --branch {{ .Values.airflow.dags.gitSync.branch }} \
-            {{ .Values.airflow.dags.gitSync.repo }} && \
-        cp -r dap/{{ .Values.airflow.dags.gitSync.subPath }}/* dags
+            {{ .Values.airflow.dags.gitSync.repo }} dap && \
+        ln -s $PWD/dap/{{ .Values.airflow.dags.gitSync.subPath }}/dap dags && \
+        mkdir dags/test && \
+        ln -s $PWD/dap/{{ .Values.airflow.dags.gitSync.subPath }}/test/dap dags/test
+
+    {{ range .Values.dapps }}
+      {{ if has "airflow" .apps }}
+
+    RUN GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /.dap/pipeline/{{ .dapp }}' \
+        git clone --single-branch --depth 1 \
+            --branch {{ .branch }} {{ .repo }} {{ .dapp }} && \
+        mkdir -p dags/dapp && \
+        ln -s $PWD/{{ .dapp }}/{{ .path }}/airflow/dags/dapp/{{ .dapp }} dags/dapp && \
+        mkdir -p dags/test/dapp && \
+        ln -s $PWD/{{ .dapp }}/{{ .path }}/airflow/dags/test/dapp/{{ .dapp }} dags/test/dapp
+
+      {{ end }}
+    {{ end }}
 
     RUN echo "AUTH_ROLE_PUBLIC = 'Admin'" >> /opt/airflow/webserver_config.py
     ENV AWS_DEFAULT_REGION {{ .Values.region }}

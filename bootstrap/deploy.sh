@@ -23,7 +23,8 @@ echo
             echo
             echo '#################### DaP Pipelines ####################'
             echo
-            echo "DaP ~ ready for dapps"
+            echo "DaP ~ let Argo CD sync apps to deploy dapps"
+            echo "-> ways to access the UI oversight in client/README.md"
         }
     }
 }

@@ -1,6 +1,7 @@
 #!/bin/bash
 source init.sh
 
+path=${DaP_PATH:=.}
 profile=default
 config=default
 while (( $# )); do
@@ -14,33 +15,46 @@ while (( $# )); do
 done
 
 . $app/config/VERSIONS
-p0="global.appVersion=$APP_VERSION"
-p1="global.registry=$REGISTRY/spark"
-p2="build.repo=$DaP_REPO"
-p3="build.branch=$DaP_BRANCH"
-p4="build.sparkVersion=$SPARK_VERSION"
-p5="build.scalaVersion=$SCALA_VERSION"
-p6="postgresql.persistence.existingClaim=$PG_VOLUME"
-p7="config=$config"
+params="
+global.profile=$profile
+global.appVersion=$APP_VERSION
+global.registry=$REGISTRY/spark
+global.kanikoVersion=$DaP_KANIKO
+build.repo=$DaP_REPO
+build.branch=$DaP_BRANCH
+build.path=$path
+build.sparkVersion=$SPARK_VERSION
+global.spark_version=v`tr . _ <<< $SPARK_VERSION`
+global.scalaVersion=$SCALA_VERSION
+postgresql.persistence.existingClaim=$PG_VOLUME
+config=$config
+"
+params=`for p in $params; do printf -- "-p$p "; done`
+if [ $app = sparkubi ]; then
+    # extra parameters to build dapp artifacts (installer & helm charts)
+    params="
+        -pargocd=${DaP_ARGO_CD:=`env_path $DaP_ENV/version/ARGO_CD`}
+        -pawscli=${DaP_AWSCLI:=`env_path $DaP_ENV/version/AWSCLI`}
+        -pdebian=${DaP_DEBIAN:=`env_path $DaP_ENV/tag/DEBIAN`}
+        -peksctl=${DaP_EKSCTL:=`env_path $DaP_ENV/version/EKSCTL`}
+        -phelm=${DaP_HELM:=`env_path $DaP_ENV/version/HELM`}
+        -pkubectl=${DaP_KUBECTL:=`env_path $DaP_ENV/version/KUBECTL`}
+        -pchartmuseum.env.open.STORAGE_AMAZON_BUCKET=$CLUSTER-$REGION-charts-$ACCOUNT
+        -pchartmuseum.env.open.STORAGE_AMAZON_REGION=$REGION
+        $params
+    "
+fi
 
+set -x
 argocd app create $app \
     --upsert \
+    --values values.yaml \
     --repo $DaP_REPO \
     --revision $DaP_BRANCH \
-    --path spark/$app \
     --dest-namespace spark \
     --dest-server https://kubernetes.default.svc \
     --sync-policy $DaP_SYNC \
-    --self-heal \
-    --auto-prune \
-    --config-management-plugin kustomized-helm \
-    --plugin-env HELM_VALUES="
-        ../charts/profile/$SPARK_VERSION.yaml 
-        ../charts/profile/default.yaml 
-        ../charts/profile/$profile.yaml 
-        values.yaml" \
-    --plugin-env DYNAMIC_VAR=$p0,$p1,$p2,$p3,$p4,$p5,$p6,$p7
-
-# --set $DYNAMIC_VAR added to helm plugin command in argocd-cm
-# similarly for ordered $HELM_VALUES
+    --path $path/spark/$app \
+    `[ $DaP_SYNC != none ] && echo --auto-prune --self-heal` \
+    $params
 

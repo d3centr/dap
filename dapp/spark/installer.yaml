@@ -1,0 +1,79 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: install-
+  namespace: spark
+spec:
+  serviceAccountName: spark-dapp-installer
+  entrypoint: steps
+  arguments:
+    parameters:
+    - name: registry
+    - name: dapps
+  templates:
+
+  - name: steps
+    steps:
+    - - name: dapps
+        template: dapp
+        when: '{{item.apps}} =~ "spark"'
+        arguments:
+          parameters:
+          - name: dapp
+            value: "{{item.dapp}}"
+          - name: repo
+            value: "{{item.repo}}"
+          - name: path
+            value: "{{item.path}}"
+          - name: branch
+            value: "{{item.branch}}"
+          - name: profile
+            value: "{{item.spark}}"
+        withParam: "{{workflow.parameters.dapps}}"
+
+  - name: dapp
+    inputs:
+      parameters:
+      - name: dapp
+      - name: repo
+      - name: path
+      - name: branch
+      - name: profile
+    volumes:
+    - name: "{{inputs.parameters.dapp}}"
+      secret:
+        secretName: "{{inputs.parameters.dapp}}-deploy-key"
+        optional: true
+        defaultMode: 0400
+        items:
+        - key: key
+          path: "{{inputs.parameters.dapp}}"
+    script:
+      image: "{{workflow.parameters.registry}}/spark:dapp-installer"
+      imagePullPolicy: Always
+      volumeMounts:
+      - name: "{{inputs.parameters.dapp}}"
+        mountPath: /.dap/pipeline
+      command: [bash]
+      source: |
+        set -eux
+        dapp={{inputs.parameters.dapp}}
+        repo={{inputs.parameters.repo}}
+        branch={{inputs.parameters.branch}}
+        path={{inputs.parameters.path}}
+
+        argocd repo add http://sparkubi-chartmuseum.spark.svc.cluster.local:8080 \
+            --type helm --name spark --upsert --plaintext \
+            --server argocd-server.argocd.svc.cluster.local:80
+
+        GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /.dap/pipeline/$dapp" \
+        git clone --single-branch --depth 1 --branch $branch $repo /home/$dapp
+        cp -r /home/$dapp/$path/spark/$dapp /home/dap/spark
+        kubectl create cm -n spark $dapp-config \
+            --from-file /home/$dapp/spark/$dapp/config \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+        cd /home/dap/spark
+        export DaP_REPO=$repo DaP_BRANCH=$branch DaP_PATH=$path
+        ./install.sh -a $dapp -p {{inputs.parameters.profile}}
+

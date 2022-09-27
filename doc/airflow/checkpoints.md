@@ -1,0 +1,180 @@
+# Checkpoints
+
+In DaP, simple metadata files, aka checkpoints, record the chain head in data extraction jobs.
+
+- Checkpoints are stored within dataset paths to track the load status of time partitions.
+- They are typically applied over ranges of 30k blocks called epochs.
+
+## Why
+
+Checkpoints bring several benefits:
+- they decouple scheduling and processed dates to overcome the desynchronization of a block index on a daily scale;
+- Airflow processes become stateless (they do not rely on the database) and run autonomously on any cluster;
+- higher isolation of processes since status can be derived from data itself;
+- more robust data dependencies established on a single metadata file lookup rather than series of job statuses<sup>1</sup>;
+- introduction of a mutability status to automatically reload latest epochs vulnerables to chain reorganization.
+
+<sup>1</sup> Time periods have been made synchronous to achieve this, i.e. period *t+1* is not expected to run before period *t*.
+
+## Dag Integration
+
+In order to leverage checkpoints, a trio of Python modules can be integrated into any dag sourcing data over blocks.
+
+**1**) To instantiate checkpoint modules as Airflow tasks, import them first:
+```python
+from dap.checkpoint import initialize_epoch, checkpoint_epoch
+from dap.utils import trigger
+```
+We also import a trigger task because checkpoints work best when a dag calls itself recursively at the end of a run. Doing so, it can automatically catch up synchronously, while re-interpreting updated checkpoints on every trigger.
+
+**2**) Derive the epoch to process in your dag scope:
+```python
+args = initialize_epoch('{{ params.bucket }}')
+# pass args to the checkpoint task
+checkpoint_task = checkpoint_epoch(args)
+```
+- Dag params should also contain a `path` key where dataset is located within the specified bucket.
+
+`args` is a dictionary made of keys `epoch`, `last_block` (the chain head), and `sources`: subgraph contracts to scan (optional).
+
+**3**) Pass the argument dictionary to tasks extracting blockchain data for the period:
+```python
+my_task(args)
+```
+`my_task` will reference `args['epoch']` in its function definition.
+
+**4**) Make the checkpoint dependent on your last tasks:
+```python
+my_last_task >> checkpoint_task
+```
+Ensure that the checkpoint task is not executed if an upstream task fails.
+
+**5**) Finally, trigger the next dag run:
+```python
+trigger('my_dag', checkpoint_task)
+```
+The checkpoint task returns the same arguments it received as input but it will also set the trigger as the very last task depending on it.
+
+## Dag Parameters
+
+Since dags implementing checkpoints are decoupled from scheduled dates, it is common to set the following parameters:
+```python
+from airflow.decorators import dag
+from airflow.utils.dates import days_ago
+
+@dag(
+    # synchronization safety: a scheduled run can't start if another is active
+    max_active_runs=1,
+    # no need to schedule past dates
+    start_date=days_ago(1),
+    # better be explicit, but not required in combination with days_ago(1)
+    catchup=False,
+)
+```
+
+## Metadata Files
+
+*by default*
+
+At the root of the dataset path:
+- `_HEAD__<epoch>`, e.g. `_HEAD__412` stores the latest chain block when the epoch 412 was initialized:\
+    the checkpoint task updates this file at the end of a successful dag run targeting the epoch.
+- `_HEAD__immutable` stores the latest epoch considered immutable:\
+    this file is a shortcut to avoid scanning unnecessary epoch checkpoints below it.
+
+The immutability threshold is a number of blocks defined by variables `EPOCH_LENGTH` and `MUTABLE_EPOCHS` in `dap.constants`. We define 2 mutable epochs because the latest epoch is always incomplete as new blocks are added and the epoch before last can still be impacted by block reorganizations.
+
+## Dependencies
+
+Checkpointed datasets let dependent dags easily know whether data of a given epoch can be consumed and its mutability status.
+
+- You can establish such a dependency when initializing the epoch (always within a dag scope):
+```python
+args = initialize_epoch('{{ params.bucket }}', head_paths='{{ params.head_paths }}')
+```
+`head_paths` override the latest block with the earliest checkpoint among paths of data dependencies.\
+If no new data is available, returned epoch will be `None`.
+
+- Define path(s) of dependencies in a list, taking uni_Flow dag as an example:
+```python
+PARAMS = {
+    'bucket': os.environ['DATA_BUCKET'],
+    'head_paths': ['uniswap/shards=0/_HEAD', 'blocks/_HEAD'],
+    ...
+}
+@dag(
+    params=PARAMS,
+    ...
+)
+def uni_Flow():
+    args = initialize_epoch('{{ params.bucket }}', head_paths='{{ params.head_paths }}')
+    ...
+```
+`uni_Flow` depends on block and uniswap (events) datasets, _HEAD is the default checkpoint prefix.
+
+- Below is a useful pattern to skip the entire dag when data is not ready:
+```python
+data_ready = ShortCircuitOperator(
+    task_id='data_ready',
+    python_callable=lambda epoch: epoch is not None,
+    op_kwargs=args  # same args as generated by initialize_epoch() in uni_Flow()
+)
+
+data_ready >> my_first_task()
+```
+Order `data_ready` short circuit right before the first data processing task.
+
+## Deep Dive
+
+When things go wrong is a good time to understand how checkpoints work.
+
+1. A [bug](https://github.com/dapfyi/dap/issues/6) causing missing event records was discovered in a range of blocks (epoch 508).
+2. After the fix was introduced, the immutability and 508 epoch checkpoints were deleted in the dataset path.
+3. The dag extracting event could then first re-run epoch 508 without any other indication than a missing checkpoint. The immutability checkpoint was also preventing the dag to reload any period below the epoch it considered immutable.
+4. Once epoch 508 was reloaded, the process triggered itself again to load the next epoch according to checkpoints.
+
+It produced the following logs and chose epoch 525 (at the time):
+```
+{checkpoint.py:81} INFO - context conf: {'epoch': 508, 'last_block': 15787068, 'dapp': 'uniswap', ...
+{checkpoint.py:84} INFO - 2 uniswap source(s) loaded
+{checkpoint.py:43} INFO - last metadata checkpoint recorded that epoch 508 is immutable
+{checkpoint.py:47} INFO - overriding epoch 508 with next mutable period 509
+{checkpoint.py:54} INFO - last load of epoch 509 occurred at block 15767296
+{checkpoint.py:59} INFO - epoch 509 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 510 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 511 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 512 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 513 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 514 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 515 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 516 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 517 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 518 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 519 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 520 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 521 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 522 persisted at least 2 epochs ahead: skip
+{checkpoint.py:59} INFO - epoch 523 persisted at least 2 epochs ahead: skip
+{checkpoint.py:66} INFO - epoch 524 is in the latest mutable period and complete: next
+{python.py:175} INFO - Done. Returned value was: {'epoch': 525, 'sources': [{...
+```
+1. The next run needs to first check if the previous run was successful. That is why the trigger is still suggesting epoch 508.
+2. Since it is marked immutable, the epoch initialization increments the epoch.
+3. Yet, epoch 509 has already been processed with a safe margin.
+4. The period is incremented until a mutable epoch is found: 524.
+5. However, the initialization increments the period again because epoch 524 is not worth reloading, yet:\
+    event though it is technically mutable, it is complete and unkown updates are available in a new epoch.
+6. Checkpoints settle on epoch 525 as the appropriate period to extract at this point in time.
+
+At the end of this run, the integrated trigger was skipped internally because the dag was up-to-date.
+
+Logs show that the dag won't trigger a new run if it just processed the current epoch:
+```
+INFO - trigger conditions: always is False and past epoch is False
+INFO - dag trigger has been skipped due to built-in conditions
+```
+This behavior can be overriden with a boolean flag, e.g.:
+```python
+trigger('dap_ERC20', args, always=True)
+```
+

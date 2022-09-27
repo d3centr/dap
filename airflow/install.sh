@@ -18,11 +18,12 @@ argocd app create airflow \
     --dest-namespace airflow \
     --dest-server https://kubernetes.default.svc \
     --sync-policy $DaP_SYNC \
-    --self-heal \
-    --auto-prune \
+    `[ $DaP_SYNC != none ] && echo --auto-prune --self-heal` \
     --values profile/default.yaml \
     --values profile/$profile.yaml \
+    --values-literal-file $DAPPS \
     -p region=$REGION \
+    -p kanikoVersion=$DaP_KANIKO \
     -p airflow.webserverSecretKey=`openssl rand -hex 16` \
     -p airflow.defaultAirflowRepository=$REGISTRY/airflow \
     -p airflow.dags.gitSync.repo=$DaP_REPO \

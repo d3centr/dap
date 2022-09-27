@@ -1,9 +1,11 @@
+{{ $profile := tpl ".Values.global.profiles.{{ .Values.global.profile }}" . }}
+{{ $depBuild := tpl (printf "{{ %s.depBuild }}" $profile) . }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ .Release.Name }}-dependencies
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    argocd.argoproj.io/hook: {{ $depBuild }}
     helm.sh/hook-weight: "-1"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
@@ -14,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: dependency-build
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-dep-{{ .Values.sparkVersion }}"
@@ -36,7 +38,7 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-dep-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    argocd.argoproj.io/hook: {{ $depBuild }}
     helm.sh/hook-weight: "-1"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
@@ -45,15 +47,17 @@ data:
 
     ARG MVN=https://repo1.maven.org/maven2
     ARG DEST=/opt/spark/jars/
+    {{ $spark := tpl ".Values.global.spark.{{ .Values.global.spark_version }}" . }}
 
     # S3
-    ADD $MVN/org/apache/hadoop/hadoop-aws/{{ .Values.global.hadoopVersion }}/hadoop-aws-{{ .Values.global.hadoopVersion }}.jar $DEST
-    ADD $MVN/com/amazonaws/aws-java-sdk-bundle/{{ .Values.global.awsSdkVersion }}/aws-java-sdk-bundle-{{ .Values.global.awsSdkVersion }}.jar $DEST
+    {{ $hadoop := tpl (printf "{{ %s.hadoopVersion }}" $spark) . }}
+    ADD $MVN/org/apache/hadoop/hadoop-aws/{{ $hadoop }}/hadoop-aws-{{ $hadoop }}.jar $DEST
+    {{ $aws := tpl (printf "{{ %s.awsSdkVersion }}" $spark) . }}
+    ADD $MVN/com/amazonaws/aws-java-sdk-bundle/{{ $aws }}/aws-java-sdk-bundle-{{ $aws }}.jar $DEST
 
     # Delta
-    ADD $MVN/io/delta/delta-core_{{ .Values.scalaVersion }}/{{ .Values.global.deltaCoreVersion }}/delta-core_{{ .Values.scalaVersion }}-{{ .Values.global.deltaCoreVersion }}.jar $DEST
-    # Hive Connector
-    ADD $MVN/io/delta/delta-hive_{{ .Values.scalaVersion }}/{{ .Values.global.deltaHiveVersion }}/delta-hive_{{ .Values.scalaVersion }}-{{ .Values.global.deltaHiveVersion }}.jar $DEST
+    {{ $deltaCore := tpl (printf "{{ %s.deltaCoreVersion }}" $spark) . }}
+    ADD $MVN/io/delta/delta-core_{{ .Values.global.scalaVersion }}/{{ $deltaCore }}/delta-core_{{ .Values.global.scalaVersion }}-{{ $deltaCore }}.jar $DEST
 
     USER root
     RUN chmod 644 $DEST*

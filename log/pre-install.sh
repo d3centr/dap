@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../bootstrap/app-init.sh
+source init.sh
 
 echo 'DaP ~ running Fluent Bit pre-install'
 
@@ -9,11 +9,6 @@ kind: Namespace
 metadata:
   name: logging
 EOF
-
-# Create global environment variables in fluent namespace.
-kubectl apply view-last-applied configmap -n default env -o yaml | \
-    sed 's/namespace: default/namespace: logging/' | \
-    kubectl apply -f -
 
 # Create log bucket.
 aws s3api head-bucket --bucket $LOG_BUCKET || aws s3 mb s3://$LOG_BUCKET

@@ -22,14 +22,15 @@ spec:
         resources:
           requests:
             memory: 230Mi
+        {{ $command := "hive --service metastore" }}
         command:
         - /bin/sh
         - -c
-        - "hive --service metastore || \
-            (schematool -initSchema -dbType postgres && hive --service metastore)"
+        - "{{ $command }} || (schematool -initSchema -dbType postgres && {{ $command }})"
         volumeMounts:
         - name: hive-config
-          mountPath: /opt/hive/conf
+          mountPath: /opt/hive/conf/hive-site.xml
+          subPath: hive-site.xml
       volumes:
       - name: hive-config
         configMap:

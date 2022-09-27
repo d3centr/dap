@@ -22,6 +22,12 @@ Parameters:
     Description: "'large' for cost-optimized node, 'xlarge' to sync twice faster, '2xlarge' to extract events"
   HotVolumeSize:
     Type: Number
+  HotVolumeThroughput:
+    Type: Number
+    Default: 125
+  HotVolumeIops:
+    Type: Number
+    Default: 3000
   ColdVolumeSize:
     Type: Number
   ColdVolumeType:
@@ -30,6 +36,12 @@ Parameters:
     AllowedValues:
       - gp3
       - sc1
+  ColdVolumeThroughput:
+    Type: Number
+    Default: 125
+  ColdVolumeIops:
+    Type: Number
+    Default: 3000
   Endpoint:
     Type: String
     Default: none
@@ -38,6 +50,12 @@ Parameters:
     Default: none
   SecurityGroups:
     Type: CommaDelimitedList
+  EnableBackup:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
   NetRestrict:
     Type: String
     Default: false
@@ -57,6 +75,8 @@ Resources:
       AvailabilityZone: !Select [0, !GetAZs '']
       VolumeType: gp3
       Size: !Ref HotVolumeSize
+      Throughput: !Ref HotVolumeThroughput
+      Iops: !Ref HotVolumeIops
       Tags: 
         - Key: Name
           Value: !Sub ${AWS::StackName}-HotVolume
@@ -67,6 +87,8 @@ Resources:
       AvailabilityZone: !Select [0, !GetAZs '']
       VolumeType: !Ref ColdVolumeType
       Size: !Ref ColdVolumeSize
+      Throughput: !Ref ColdVolumeThroughput
+      Iops: !Ref ColdVolumeIops
       Tags: 
         - Key: Name
           Value: !Sub ${AWS::StackName}-ColdVolume
@@ -139,8 +161,12 @@ Resources:
                 - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/${ColdVolume}
                 - !Ref AWS::NoValue
             Condition:
-              StringLike:
-                "ec2:ResourceTag/Name": !Sub ${AWS::StackName}*
+              "ForAnyValue:StringEquals":
+                "ec2:ResourceTag/Name":
+                  - !Sub ${AWS::StackName}-HotVolume
+                  - !Sub ${AWS::StackName}-ColdVolume
+                  # Instance
+                  - !Sub dap-${Client}-${Network}
           - Effect: Allow
             Action:
               - ec2:AssociateAddress
@@ -197,7 +223,7 @@ Resources:
           - ResourceType: instance
             Tags:
               - Key: Name
-                Value: !Ref AWS::StackName
+                Value: !Sub dap-${Client}-${Network}
         # MIME multi-part file adds a cloud-config to run user data not only during the first boot
         UserData:
           Fn::Base64: !Sub |
@@ -313,8 +339,9 @@ Resources:
                 set -eux
                 exec >> /var/log/bootstrap.log 2>&1
 
-                s3_path=s3://dap-${AWS::Region}-client-${AWS::AccountId}/${Client}/${Network}
-                fs_path=/mnt
+                # export for shell in xargs threads
+                export s3_path=s3://dap-${AWS::Region}-client-${AWS::AccountId}/${Client}/${Network}
+                export fs_path=/mnt
 
                 s3_bytes=`aws s3 ls --summarize --recursive $s3_path | 
                     awk '$1=="Total" && $2=="Size:"{print $3}'`
@@ -330,12 +357,26 @@ Resources:
                 GiB_bytes=1073741824
                 if [ `tr -d - <<< $(($fs_bytes - $s3_bytes))` -lt $GiB_bytes ]; then
                     echo "less than a GiB difference between $fs_path and $s3_path: no backup sync"
+
                 elif [ $fs_bytes -lt $s3_bytes ]; then
                     echo "lower number of bytes locally than in s3: sync from $s3_path to $fs_path"
-                    aws s3 sync $s3_path $fs_path --delete
+                    thread () { 
+                        aws s3 sync $s3_path/$1 $fs_path/$1 --delete > /var/log/$1-backup.log
+                    }
+                    export -f thread
+                    printf 'data\nfreezer\n' | xargs -n 1 -P 2 -i bash -c 'thread {}'
+
                 elif [ $fs_bytes -gt $s3_bytes ]; then
                     echo "greater number of bytes locally than in s3: sync from $fs_path to $s3_path"
-                    aws s3 sync $fs_path $s3_path --delete
+                    if [ -d $fs_path/freezer ]; then
+                        thread () { 
+                            aws s3 sync $fs_path/$1 $s3_path/$1 --delete > /var/log/$1-backup.log
+                        }
+                        export -f thread
+                        printf 'data\nfreezer\n' | xargs -n 1 -P 2 -i bash -c 'thread {}'
+                    else
+                        aws s3 sync $fs_path $s3_path --delete
+                    fi
                 fi
               mode: "000755"
             /tmp/bootstrap/install.sh:
@@ -377,6 +418,8 @@ Resources:
                 HotVolume: !Ref HotVolume
                 ColdVolume: !If [CreateColdVolume, !Ref ColdVolume, ""]
             03_sync_backup:
+              # !Sub instead of !Ref for safety, so boolean is only interpreted in shell
+              test: !Sub "${EnableBackup}"
               command: "/tmp/bootstrap/sync-backup.sh"
             04_install:
               command: "/tmp/bootstrap/install.sh"

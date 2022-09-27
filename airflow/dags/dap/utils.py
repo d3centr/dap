@@ -50,35 +50,41 @@ def scale_pool(eth_client, pool_name=''):
     print(subprocess.check_output(
         ['airflow', 'pools', 'set', pool_name, threads, description]))
 
-def trigger(dag_id, args, params={}, trigger_kwargs={
+def trigger(dag_id, args, always=False, params={}, trigger_kwargs={
     'wait_for_completion': False
 }):
 
     def callable(**kwargs):
-        KEYS = ['epoch', 'last_block']
-        print(f'passing down {KEYS} and params from dag config:')
-        pprint(kwargs)
-        context = get_current_context()
-        if 'trigger_run_id' not in trigger_kwargs.keys():
-            run_id_prefix = context['dag_run'].run_id.split('_')[0]
-            dt = datetime.now(timezone.utc).isoformat()
-            trigger_kwargs.update({
-                'trigger_run_id': f"{run_id_prefix}__{kwargs['epoch']}_{dt}"
-            })
-        conf = {key: kwargs[key] for key in KEYS}
-        # pass the caller's params if no explicit params
-        _params = params if params else kwargs['params']
-        # discard outdated epoch in params: not to override argument
-        if 'epoch' in _params.keys():
-            _params.pop('epoch')
-        conf.update(_params)
-        TriggerDagRunOperator(
-            task_id='trigger_op',
-            trigger_dag_id=dag_id,
-            conf=conf,
-            reset_dag_run=True,
-            **trigger_kwargs
-        ).execute(context)
+        first_block_in_epoch = kwargs['epoch'] * EPOCH_LENGTH
+        past = kwargs['last_block'] - first_block_in_epoch >= EPOCH_LENGTH
+        print(f"trigger conditions: always is {always} and past epoch is {past}")
+
+        # unless always, do not trigger if current epoch has just been processed
+        if past or always:
+            KEYS = ['epoch', 'last_block']
+            print(f'passing down {KEYS} and params from dag config:')
+            pprint(kwargs)
+            if 'trigger_run_id' not in trigger_kwargs.keys():
+                dt = datetime.now(timezone.utc).isoformat()
+                trigger_kwargs.update({
+                    'trigger_run_id': f"trigger__{kwargs['epoch']}_{dt}"
+                })
+            conf = {key: kwargs[key] for key in KEYS}
+            # pass the caller's params if no explicit params
+            _params = params if params else kwargs['params']
+            # discard outdated epoch in params: not to override argument
+            if 'epoch' in _params.keys():
+                _params.pop('epoch')
+            conf.update(_params)
+            TriggerDagRunOperator(
+                task_id='trigger_op',
+                trigger_dag_id=dag_id,
+                conf=conf,
+                reset_dag_run=True,
+                **trigger_kwargs
+            ).execute(get_current_context())
+        else:
+            print("dag trigger has been skipped due to built-in conditions")
 
     wait = trigger_kwargs['wait_for_completion']
     task_id = dag_id if wait else f'{dag_id}_trigger'

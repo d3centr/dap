@@ -52,7 +52,8 @@ case $1 in
         N=5
 
         params=()
-        consensus=prysm
+        beacon_client=prysm
+        network=mainnet
         for param in ${@:2}; do
             IFS== read key value <<< "$param"
             if [ $key = BeaconClient ]; then
@@ -86,7 +87,7 @@ case $1 in
         build=geth-alltools-linux-amd64-$version-$commit
         aws cloudformation deploy --capabilities CAPABILITY_IAM \
             --stack-name dap-geth-mainnet --template-file geth.yaml \
-            --parameter-overrides Build=$build $params;;
+            --parameter-overrides Build=$build ${params[@]};;
 
     lighthouse.yaml)
         N=5

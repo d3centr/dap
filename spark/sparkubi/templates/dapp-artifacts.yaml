@@ -1,0 +1,141 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: dapp-artifacts
+  namespace: spark
+spec:
+  serviceAccountName: spark
+  entrypoint: steps
+  templates:
+
+  - name: steps
+    steps:
+    - - name: install-environment-dockerfile
+        template: install-environment-dockerfile
+      # deactivate cache on small layer on top of install environment to keep DaP up-to-date
+      - name: dapp-installer-dockerfile
+        template: dapp-installer-dockerfile
+    - - name: installer-builder
+        template: installer-builder
+    - - name: dap-overlay
+        template: dap-overlay
+    - - name: chart-packages
+        template: chart-packages
+      - name: submit-script
+        template: submit-script
+
+  - name: install-environment-dockerfile
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: install-environment-dockerfile
+          namespace: spark
+        data:
+          Dockerfile: |
+            FROM debian:{{ .Values.debian }}
+        
+            RUN apt-get update && apt-get install -y curl unzip git && \
+                apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+        
+            RUN curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64-{{ .Values.awscli }}.zip -o awscliv2.zip && \
+                unzip awscliv2.zip && ./aws/install && rm awscliv2.zip
+        
+            RUN curl -LO https://dl.k8s.io/release/v{{ .Values.kubectl }}/bin/linux/amd64/kubectl && \
+                install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm kubectl
+        
+            RUN curl https://get.helm.sh/helm-v{{ .Values.helm }}-linux-amd64.tar.gz | tar xz -C /tmp && \
+                mv /tmp/linux-amd64/helm /usr/local/bin/helm && rm -r /tmp/linux-amd64
+
+            RUN curl -L -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/download/v{{ .Values.argocd }}/argocd-linux-amd64 && \
+                chmod +x /usr/local/bin/argocd
+
+  - name: installer-builder
+    container:
+      image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
+      command: 
+      - /kaniko/executor
+      args:
+      - "--context=/mnt"
+      - "--destination={{ .Values.global.registry }}:install-environment"
+      - "--cache=true"
+      volumeMounts:
+      - name: dockerfile
+        mountPath: /mnt
+    volumes:
+    - name: dockerfile
+      configMap:
+        name: install-environment-dockerfile
+
+  - name: dapp-installer-dockerfile
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: dapp-installer-dockerfile
+          namespace: spark
+        data:
+          Dockerfile: |
+            FROM {{ .Values.global.registry }}:install-environment
+
+            RUN GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /.dap/cluster/key' \
+                git clone --single-branch --depth 1 --branch {{ .Values.build.branch }} \
+                    {{ .Values.build.repo }} /home/dap
+
+  - name: dap-overlay
+    container:
+      image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
+      command: 
+      - /kaniko/executor
+      args:
+      - "--context=/mnt"
+      - "--destination={{ .Values.global.registry }}:dapp-installer"
+      - "--cache=false"
+      volumeMounts:
+      - name: dockerfile
+        mountPath: /mnt
+      - name: dap
+        mountPath: /.dap/cluster
+    volumes:
+    - name: dockerfile
+      configMap:
+        name: dapp-installer-dockerfile
+    - name: dap
+      secret:
+        secretName: dap-deploy-key
+        optional: true
+        defaultMode: 0400
+
+  - name: submit-script
+    script:
+      image: {{ .Values.global.registry }}:dapp-installer
+      imagePullPolicy: Always
+      command: [bash]
+      source: |
+        kubectl create cm -n spark submit-script --from-file /home/dap/spark/submit.sh \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+  - name: chart-packages
+    script:
+      image: {{ .Values.global.registry }}:dapp-installer
+      imagePullPolicy: Always
+      workingDir: /home/dap/spark/charts
+      command: [bash]
+      source: |
+        set -eux
+
+        push () {
+            chart=$1
+            helm package $chart
+            art=`ls $chart-*.tgz`
+            curl --data-binary "@$art" http://sparkubi-chartmuseum:8080/api/charts
+        }
+
+        push profile
+        push build
+        push buffer
+

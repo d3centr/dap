@@ -27,8 +27,11 @@ THREADS = 1
 
 @task()
 def initialize(epoch=-1):
-    conf = get_current_context()['dag_run'].conf
-    epoch = conf['epoch'] if epoch == -1 else epoch
+    conf = get_current_context()['params']
+    if epoch != -1:
+        # propagate explicit epoch in shared context for other tasks
+        conf.update({'epoch': epoch})
+    epoch = conf['epoch']
     s3_fs = s3fs.S3FileSystem()
 
     fields = [f.split('.') for f in conf['fields']]
@@ -70,15 +73,19 @@ def initialize(epoch=-1):
             threads[i].append(token)
     return threads
 
-@task(pool=PARAMS['eth_client'], pool_slots=1)
+@task(pool=PARAMS['eth_client'], pool_slots=1, 
+    priority_weight=9, weight_rule='absolute')
 def batch(threads, i):
     thread = threads[i]
 
-    conf = get_current_context()['dag_run'].conf
+    conf = get_current_context()['params']
     with open(conf['abis']['ERC20']) as file:
         abi = json.load(file)
     w3 = Web3(Web3.WebsocketProvider(
         f"ws://{eth_ip(conf['eth_client'])}:8546", websocket_timeout=60))
+    head, last_block = w3.eth.block_number, conf['last_block']
+    assert(head >= last_block), (f'Chain head ({head}) must be on or beyond the last'
+        f' epoch block ({last_block}) of the dag run which triggered dap_ERC20().')
 
     tokens = []
     for address in thread:

@@ -1,6 +1,7 @@
 from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
 from airflow.utils.dates import days_ago
+from airflow.models.param import Param
 import os
 import s3fs
 import boto3
@@ -35,15 +36,17 @@ threads = EPOCH_LENGTH // BATCH_LENGTH
     pool_slots=2
 )
 def batch(index, args, batch_length=BATCH_LENGTH):
-    conf = get_current_context()['dag_run'].conf
+    conf = get_current_context()['params']
     w3 = Web3(Web3.WebsocketProvider(
         f"ws://{eth_ip(conf['eth_client'])}:8546", 
         websocket_timeout=60, websocket_kwargs={'max_size': 10000000}))
 
-    blocks = []
+    blocks, last_block = [], args['last_block']
     start = args['epoch'] * EPOCH_LENGTH + index
     for block in range(start, start + batch_length):
-        blocks.append(w3.eth.get_block(block, full_transactions=True))
+        if block <= last_block:
+            blocks.append(w3.eth.get_block(block, full_transactions=True))
+
     blocks = [dict(block) for block in blocks]
     for block in blocks:
         block.update({
@@ -57,30 +60,33 @@ def batch(index, args, batch_length=BATCH_LENGTH):
                 if (isinstance(v, list) and len(v) > 0 
                     and isinstance(v[0], AttributeDict))})
 
-    df = pd.DataFrame(blocks)
-    df['epoch'] = args['epoch']
-    df['date'] = df.timestamp.apply(
-        lambda t: datetime.utcfromtimestamp(t).strftime('%Y-%m-%d'))
+    if blocks:
+        df = pd.DataFrame(blocks)
+        df['epoch'] = args['epoch']
+        df['date'] = df.timestamp.apply(
+            lambda t: datetime.utcfromtimestamp(t).strftime('%Y-%m-%d'))
 
-    pq.write_to_dataset(
-        pa.Table.from_pandas(df),
-        f"{conf['bucket']}/{conf['path']}",
-        filesystem=s3fs.S3FileSystem(),
-        # epoch partition must come first to handle schema evolution in Spark
-        partition_cols=['epoch', 'date'],
-        compression='SNAPPY',
-        partition_filename_cb=lambda _: f'{start}.parquet.snappy'
-    )
+        pq.write_to_dataset(
+            pa.Table.from_pandas(df),
+            f"{conf['bucket']}/{conf['path']}",
+            filesystem=s3fs.S3FileSystem(),
+            # epoch partition must come first to handle schema evolution in Spark
+            partition_cols=['epoch', 'date'],
+            compression='SNAPPY',
+            partition_filename_cb=lambda _: f'{start}.parquet.snappy'
+        )
+
     return args
 
 @dag(
     default_args={
         'retries': 1
     },
-    schedule_interval=None,
-    start_date=days_ago(2),
-    params=PARAMS,
+    schedule_interval='10 0 * * *',
     max_active_runs=1,
+    start_date=days_ago(1),
+    catchup=False,
+    params=PARAMS,
     tags=['job', 'dap']
 )
 def dap_Block():

@@ -14,7 +14,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: {{ .Release.Name }}-image-build
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.airflow.defaultAirflowRepository }}:{{ .Values.airflow.airflowVersion }}"
@@ -22,10 +22,31 @@ spec:
         volumeMounts:
         - name: dockerfile
           mountPath: /mnt
+        - name: dap
+          mountPath: /.dap/cluster
+        {{ range .Values.dapps }}
+        - name: {{ .dapp }}
+          mountPath: /.dap/pipeline
+        {{ end }}
       volumes:
       - name: dockerfile
         configMap:
           name: {{ .Release.Name }}-dockerfile
+      - name: dap
+        secret:
+          secretName: dap-deploy-key
+          optional: true
+          defaultMode: 0444
+      {{ range .Values.dapps }}
+      - name: {{ .dapp }}
+        secret:
+          secretName: {{ .dapp }}-deploy-key
+          optional: true
+          defaultMode: 0444
+          items:
+          - key: key
+            path: {{ .dapp }}
+      {{ end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -38,5 +59,20 @@ metadata:
 data:
   Dockerfile: |
     FROM {{ .Values.airflow.defaultAirflowRepository }}:base-{{ .Values.airflow.airflowVersion }}
-    RUN cd dap && git pull && cp -r {{ .Values.airflow.dags.gitSync.subPath }}/* ../dags
+
+    {{ if .Values.hotDapBuild }}
+    RUN cd dap && \
+        GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /.dap/cluster/key' \
+            git pull --ff-only
+    {{ end }}
+
+    {{ range .Values.dapps }}
+      {{ if and (has "airflow" .apps) (eq .airflow "hot") }}
+
+    RUN cd {{ .dapp }} && \
+        GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /.dap/pipeline/{{ .dapp }}' \
+            git pull --ff-only
+
+      {{ end }}
+    {{ end }}
 

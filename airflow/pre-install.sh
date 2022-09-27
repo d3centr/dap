@@ -30,10 +30,23 @@ subjects:
 EOF
 
 
-# Create global environment variables in airflow namespace.
+# Create global environment variables and main deploy key in airflow namespace.
 kubectl apply view-last-applied configmap -n default env -o yaml | \
     sed 's/namespace: default/namespace: airflow/' | \
     kubectl apply -f -
+
+: ${DaP_SSH_KEY_NAME:=`env_path $DaP_ENV/REPO/SSH_KEY_NAME`}
+[ -f /root/.dap/$DaP_SSH_KEY_NAME ] &&
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dap-deploy-key
+  namespace: airflow
+stringData:
+  key: |
+`sed 's/^/    /' /root/.dap/$DaP_SSH_KEY_NAME`
+EOF
 
 
 # Provision volume for Airflow records outside shorter-lived k8s clusters.

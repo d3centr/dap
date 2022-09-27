@@ -1,9 +1,20 @@
+{{ $profile := tpl ".Values.global.profiles.{{ .Values.global.profile }}" . }}
+{{ $coldBuild := tpl (printf "{{ %s.coldBuild }}" $profile) . }}
+{{ $hotBuild := tpl (printf "{{ %s.hotBuild }}" $profile) . }}
+
+{{ $secretName := tpl "{{ .Release.Name }}-deploy-key" . }}
+{{ $keyPath := "/.dap/pipeline" }}
+{{ if eq .Release.Name "sparkubi" }}
+    {{ $secretName = "dap-deploy-key" }}
+    {{ $keyPath = "/.dap/cluster" }}
+{{ end }}
+
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ .Release.Name }}-builder
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.coldBuild }}
+    argocd.argoproj.io/hook: {{ $coldBuild }}
     helm.sh/hook-weight: "1"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
@@ -14,7 +25,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: {{ .Release.Name }}-builder
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-builder-{{ .Values.global.appVersion }}"
@@ -31,17 +42,24 @@ spec:
         volumeMounts:
         - name: dockerfile
           mountPath: /mnt
+        - name: deploy-key
+          mountPath: {{ $keyPath }}
       volumes:
       - name: dockerfile
         configMap:
           name: {{ .Release.Name }}-cold-dockerfile
+      - name: deploy-key
+        secret:
+          secretName: {{ $secretName }}
+          optional: true
+          defaultMode: 0400
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-cold-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.coldBuild }}
+    argocd.argoproj.io/hook: {{ $coldBuild }}
     helm.sh/hook-weight: "1"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
@@ -52,22 +70,25 @@ data:
 
     # spark-submit relies on kubectl rather than specialized wrappers around K8s API
     ARG KUBECTL_VERSION
-    RUN apt-get update && apt-get install -y git curl unzip zip && rm -rf /var/cache/apt/* && \
+    RUN apt-get update && apt-get install -y git curl unzip zip && \
+        apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
         curl -s "https://get.sdkman.io" | bash && \
         curl -LO https://dl.k8s.io/release/v$KUBECTL_VERSION/bin/linux/amd64/kubectl && \
         install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm kubectl
 
-    RUN git clone --single-branch --depth 1 --branch {{ .Values.branch }} {{ .Values.repo }}
+    RUN GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i {{ $keyPath }}/key' \
+        git clone --single-branch --depth 1 --branch {{ .Values.branch }} {{ .Values.repo }} dap
 
     ARG MVN=https://repo1.maven.org/maven2  # referenced in extraJars, e.g. uniswap/values.yaml
-    RUN source /root/.sdkman/bin/sdkman-init.sh && cd dap/spark/{{ .Release.Name }} && \
+    RUN source /root/.sdkman/bin/sdkman-init.sh && \
+        cd dap/{{ .Values.path }}/spark/{{ .Release.Name }} && \
         sdk install sbt `awk '$1=="sbtVersion" && $2==":=" {print $3}' build.sbt | tr -d '"'` && \
         ln -s /opt/spark/jars lib && \
     {{ range .Values.extraCommands }}
         {{ . }} && \
     {{ end }}    
-        mkdir -p target/scala-{{ .Values.scalaVersion }} && \
-        cd target/scala-{{ .Values.scalaVersion }} && \
+        mkdir -p target/scala-{{ .Values.global.scalaVersion }} && \
+        cd target/scala-{{ .Values.global.scalaVersion }} && \
     {{ if and (hasPrefix "sparkubi" .Values.baseImage) (ne .Release.Name "sparkubi") }}
         cp /opt/spark/jars/sparkubi*.jar . && \
     {{ end }}
@@ -77,14 +98,14 @@ data:
         cd - && \
         sbt package
 
-    WORKDIR /opt/spark/work-dir/dap/spark
+    WORKDIR /opt/spark/work-dir/dap/{{ .Values.path }}/spark
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ .Release.Name }}-build
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.hotBuild }}
+    argocd.argoproj.io/hook: {{ $hotBuild }}
     helm.sh/hook-weight: "2"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
@@ -95,7 +116,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: {{ .Release.Name }}-build
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-{{ .Values.global.appVersion }}"
@@ -107,26 +128,33 @@ spec:
         volumeMounts:
         - name: dockerfile
           mountPath: /mnt
+        - name: deploy-key
+          mountPath: {{ $keyPath }}
       volumes:
       - name: dockerfile
         configMap:
           name: {{ .Release.Name }}-hot-dockerfile
+      - name: deploy-key
+        secret:
+          secretName: {{ $secretName }}
+          optional: true
+          defaultMode: 0400
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-hot-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.hotBuild }}
+    argocd.argoproj.io/hook: {{ $hotBuild }}
     helm.sh/hook-weight: "2"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   Dockerfile: |
     FROM {{ .Values.global.registry }}:{{ .Release.Name }}-builder-{{ .Values.global.appVersion }} AS build
 
-    RUN git pull && \
+    RUN GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i {{ $keyPath }}/key' git pull --ff-only && \
         source /root/.sdkman/bin/sdkman-init.sh && cd {{ .Release.Name }} && sbt package
 
     FROM {{ .Values.global.registry }}:{{ .Release.Name }}-dep-{{ .Values.sparkVersion }}
-    COPY --from=build /opt/spark/work-dir/dap/spark/{{ .Release.Name }}/target/scala-{{ .Values.scalaVersion }}/*.jar /opt/spark/jars/
+    COPY --from=build /opt/spark/work-dir/dap/{{ .Values.path }}/spark/{{ .Release.Name }}/target/scala-{{ .Values.global.scalaVersion }}/*.jar /opt/spark/jars/
 

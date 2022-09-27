@@ -1,13 +1,16 @@
 # DaP
 DaP is an open platform to ingest, process and analyze Web3 data.
 
-[ [Deployment](/bootstrap#deployment) ]
+[Documentation](/doc) | [Deployment](/bootstrap)
 
 ### Features
-- __Embedded Blockchain__ makes DaP self-sufficient.
-- __Data Pipelines__ from ingestion to vizualisation: you develop it, DaP builds and runs it.
+- __Embedded Blockchain__ makes DaP fast and self-sufficient.
+- __Data Pipeline__ from extraction to vizualisation: you develop it, DaP builds and runs it.
 - __SQL Analytics__ powered by [SparkUBI](./spark/sparkubi): precise off-chain calculations at scale on Spark engine.
-- __Token Prices__ at the historical live exchange rate on Uniswap.
+- and more...
+    - __Token Prices__ at the historical live exchange rate on Uniswap;
+    - *interfaces*: see screenshots and snippets on the gallery [page](https://trustless.land/gallery.html);
+    - [repo](https://github.com/dapfyi/uniswap-dapp) showcasing advanced use cases in a plug-and-play pipeline.
 
 ### Technology
 In technical terms, DaP is an OLAP system for Web3: 
@@ -22,6 +25,8 @@ While they both serve queries, OLAP requires a different architecture for analyt
 Like any OLAP solution, DaP trades off multi-tenancy for scale and responsiveness for bandwidth, i.e.
 - APIs are not designed to be exposed publicly;
 - best latency such a system can achieve is near real-time (seconds vs milliseconds in OLTP).
+
+> Apache Flink boasts a high throughput and low event latency runtime. A proof of concept is planned to determine whether DaP should invest into Flink to complement Spark.
 
 ## Stack
 DaP runs in AWS on a Data Lakehouse architecture, enabling BI and ML in a single system supporting ACID transactions. Much of the development work has gone into the integration, specialization and automation of awesome open-source projects.
@@ -41,7 +46,7 @@ Ingesting historical events from smart contracts scales with processors availabl
 - **Processing** - _Off-chain computation engine._
 
 Apache Spark has been extended with a custom plugin enabling the seamless processing of big blockchain integers. The accurate valuation of transactions and tokens benefits from native Spark performance. See [SparkUBI](/spark/sparkubi/README.md) for more info.
-- **Data Pipelines** - _coming soon_
+- **Data Pipelines** - _Environment as a service._
 
-Build and deploy Web3 data pipelines in a PaaS fashion from a git repo. DaP aims to provide savvy engineers with the ease-of-use of a managed service in an open system. It supports orchestrated ETL or ML processes, all the way to SQL analytics, visualization and dashboards.
+Build and deploy Web3 data pipelines in a PaaS fashion from a git repo ([example](https://github.com/dapfyi/uniswap-dapp)). DaP aims to provide savvy engineers with the ease-of-use of a managed service in an open system. It supports orchestrated ETL or ML processes, all the way to SQL analytics, visualization and dashboards.
 

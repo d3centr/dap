@@ -1,0 +1,8 @@
+apiVersion: v2
+name: log
+version: 0.1.0
+dependencies:
+  - name: fluent-bit
+    version: ~0.20.9
+    repository: https://fluent.github.io/helm-charts
+

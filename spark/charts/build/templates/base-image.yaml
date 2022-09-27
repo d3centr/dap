@@ -1,9 +1,11 @@
+{{ $profile := tpl ".Values.global.profiles.{{ .Values.global.profile }}" . }}
+{{ $baseBuild := tpl (printf "{{ %s.baseBuild }}" $profile) . }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ .Release.Name }}-base-image
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.baseBuild }}
+    argocd.argoproj.io/hook: {{ $baseBuild }}
     helm.sh/hook-weight: "-2"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
@@ -14,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: base-image
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-base-{{ .Values.sparkVersion }}"
@@ -36,7 +38,7 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-base-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.baseBuild }}
+    argocd.argoproj.io/hook: {{ $baseBuild }}
     helm.sh/hook-weight: "-2"
     helm.sh/hook-delete-policy: before-hook-creation
 data:

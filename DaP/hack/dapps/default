@@ -1,0 +1,12 @@
+dapps:
+- dapp: uniswap
+  repo: https://github.com/dapfyi/uniswap-dapp.git
+  branch: main
+  path: .
+  apps:
+  - airflow
+  - spark
+  - superset
+  airflow: base
+  spark: default
+

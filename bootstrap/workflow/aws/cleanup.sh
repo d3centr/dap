@@ -3,7 +3,7 @@ set -eo pipefail
 source workflow/aws/lib/env.sh
 
 help () { echo "
-    usage: ./cleanup.sh [<cluster name>] [--policies]
+    usage: ./cleanup.sh [<cluster name>]
     [...] is optional
     Note: script is usually called from bootstrap/destroy.sh wrapper
 
@@ -57,6 +57,7 @@ echo "DaP ~ deleting $cluster policies"
 
 default_policies="
     arn:aws:iam::$ACCOUNT:policy/$cluster-node-$REGION
+    arn:aws:iam::$ACCOUNT:policy/$cluster-installer-$REGION
     arn:aws:iam::$ACCOUNT:policy/$cluster-autoscaler-$REGION
 "
 for policy in $default_policies; do

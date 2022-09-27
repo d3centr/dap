@@ -11,12 +11,13 @@ source $lib_path/profile-configuration.sh
 source $lib_path/env.sh
 echo "DaP ~ deleting stateful Spark resources tied to $cluster cluster in $REGION"
 
-echo "WARNING: historical s3 data and Spark container images will be erased."
+echo "WARNING: historical s3 data (delta bucket) and Spark images + charts will be erased."
 read -p "Are you sure? Type YES to confirm or any character to skip and review next resource: "
 if [[ $REPLY =~ ^YES$ ]]; then
-    aws ecr delete-repository --repository-name $cluster/spark --force
-    aws ecr delete-repository --repository-name $cluster/spark/cache --force
-    aws s3 rb s3://$cluster-$REGION-delta-$ACCOUNT --force
+    for repo in spark spark/cache; do
+        aws ecr delete-repository --repository-name $cluster/$repo --force; done
+    for bucket in delta charts; do
+        aws s3 rb s3://$cluster-$REGION-$bucket-$ACCOUNT --force; done
 fi
 
 echo "WARNING: metastore volume will be erased."

@@ -6,7 +6,11 @@ if ${NetRestrict}; then
         paste -sd,`
 else netrestrict=0.0.0.0/0; fi
 
-/mnt/data/${Build}/geth \
+client=/mnt/data/${Build}/geth
+# necessary when executable has been pulled from backup
+chmod +x $client
+
+$client \
     --${Network} \
     --datadir /mnt/data/${Network} \
     --datadir.ancient /mnt/freezer/${Network} \

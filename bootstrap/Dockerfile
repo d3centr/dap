@@ -11,7 +11,8 @@ ARG ARGO_WF_CHART_VERSION
 ENV KUBECTL_VERSION $KUBECTL_VERSION
 
 # gettext-base installs envsubst command
-RUN apt-get update && apt-get install -y curl unzip gettext-base git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl unzip gettext-base git && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64-$AWSCLI_VERSION.zip -o awscliv2.zip && \
     unzip awscliv2.zip && ./aws/install && rm awscliv2.zip

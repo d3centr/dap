@@ -16,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: metastore-image
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:standalone-metastore"
@@ -41,10 +41,13 @@ data:
   Dockerfile: |
     FROM openjdk:11-jre-slim
 
+    {{ $spark := tpl ".Values.global.spark.{{ .Values.global.spark_version }}" . }}
     ARG VERSION=3.1.2
     ARG TAR=hive-standalone-metastore-$VERSION-bin.tar.gz
-    ARG HADOOP={{ .Values.hadoopVersion }}
-    ARG AWS={{ .Values.awsSdkVersion }}
+    {{ $hadoop := tpl (printf "{{ %s.hadoopVersion }}" $spark) . }}
+    ARG HADOOP={{ $hadoop }}
+    {{ $aws := tpl (printf "{{ %s.awsSdkVersion }}" $spark) . }}
+    ARG AWS={{ $aws }}
     ARG URL=https://repo1.maven.org/maven2
     
     RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && \

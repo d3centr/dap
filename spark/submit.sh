@@ -32,8 +32,13 @@ SPARKUBI_SIMPLIFY=100
 SPARKUBI_MIN_BITS=192
 SPARKUBI_RESCALE=true
 SPARKUBI_PROFILING=false
-. $app/config/$config  # can override SparkUBI variables
-. $app/config/VERSIONS
+if [ -d $app ]; then
+    . $app/config/$config  # can override SparkUBI variables
+    . $app/config/VERSIONS
+else
+    eval "`kubectl get cm -n spark $app-config \
+        -o \"jsonpath={.data['VERSIONS', '\"$config\"']}\"`"
+fi
 
 shell_jars="/opt/spark/work-dir/dap/spark/$app/target/scala-$SCALA_VERSION/\*.jar"
 if [ $2 = shell ]; then
@@ -123,13 +128,16 @@ if [ -f /.dockerenv ]; then
 else
     stdin=true
     echo "/.dockerenv wasn't found: authenticating with k8s outside container"
-    # authenticate with cluster and declare REGISTRY + DELTA_BUCKET variables
+    # authenticate with cluster and declare REGISTRY
     source `git rev-parse --show-toplevel`/bootstrap/app-init.sh
+    # default for local spark submit override of sink bucket: no need to call kubectl
+    DELTA_BUCKET=$CLUSTER-$REGION-delta-$ACCOUNT
 fi
 
 DRIVER_PORT=35743
 STATE_STORE=org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider
 CATALOG=org.apache.spark.sql.delta.catalog.DeltaCatalog
+DELTA_SQL=io.delta.sql.DeltaSparkSessionExtension
 env="
         - name: SPARKUBI_PRECISION
           value: \"$SPARKUBI_PRECISION\"
@@ -192,11 +200,10 @@ data:
         --conf spark.kubernetes.container.image=$REGISTRY/spark:$tag \
         --conf spark.kubernetes.container.image.pullPolicy=Always \
         --conf spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
-        --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+        --conf spark.sql.extensions=$DELTA_SQL,fyi.dap.sparkubi.Extensions \
         --conf spark.sql.catalog.spark_catalog=$CATALOG \
         --conf spark.sql.streaming.stateStore.providerClass=$STATE_STORE \
         --conf spark.kubernetes.executor.podTemplateFile=/mnt/pod-template.yaml \
-        --conf spark.sql.extensions=fyi.dap.sparkubi.Extensions \
         --conf spark.sql.hive.thriftServer.singleSession=true \
         --conf spark.driver.dap.epoch=${epoch:-"-1"} \
         --conf spark.driver.dap.date=${_date:-"0000-00-00"} \

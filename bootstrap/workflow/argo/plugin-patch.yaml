@@ -3,14 +3,21 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
 data:
+  # minimum kustomization.yaml to place in path:
+  #   apiVersion: kustomize.config.k8s.io/v1beta1
+  #   kind: Kustomization
+  #   resources:
+  #     - all.yaml
   configManagementPlugins: |
     - name: kustomized-helm
       init:
-        command: ["/bin/sh", "-c"]
+        command: ["/bin/bash", "-c"]
         args: ["helm dependency build"]
       generate:
-        command: ["/bin/sh", "-c"]
-        args: ["helm template . --name-template $ARGOCD_APP_NAME -n $ARGOCD_APP_NAMESPACE \
-            $(for v in $HELM_VALUES; do printf -- '--values '$v' '; done) \
-            --set $DYNAMIC_VAR > all.yaml && kustomize build"]
+        command: ["/bin/bash", "-e", "-o", "pipefail", "-c"]
+        args:
+          - helm template . --name-template $ARGOCD_APP_NAME -n $ARGOCD_APP_NAMESPACE 
+                -f values.yaml --set $DYNAMIC_VAR | 
+                tee /tmp/$ARGOCD_APP_NAMESPACE.yaml > all.yaml;
+            kustomize build
 

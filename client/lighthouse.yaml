@@ -25,6 +25,9 @@ Parameters:
   JsonWebToken:
     Type: 'AWS::SSM::Parameter::Value<String>'
     Default: /cfn/dap/lighthouse/mainnet/jwt
+  EnableBackup:
+    Type: String
+    Default: false
 
 Resources:
   Stack:
@@ -38,6 +41,7 @@ Resources:
         ColdVolumeSize: !Ref ColdVolumeSize
         Endpoint: !Ref Endpoint
         JsonWebToken: !Ref JsonWebToken
+        EnableBackup: !Ref EnableBackup
         SecurityGroups: !Join 
           - ','
           - - !ImportValue dap-network-lighthouse-sg

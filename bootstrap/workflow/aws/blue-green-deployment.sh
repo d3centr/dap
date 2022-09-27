@@ -6,10 +6,10 @@ source ../DaP/load_ENV.sh
 env_script=workflow/aws/lib/env.sh
 if $DaP_INGRESS; then . $env_script --dns; else . $env_script; fi
 
-CLIENT_SUFFIX=geth
-ETHEREUM_CLIENT=dap-$CLIENT_SUFFIX
+CLIENT_NAME=geth
+ETHEREUM_CLIENT=dap-$CLIENT_NAME-mainnet
 ETHEREUM_IP=`aws cloudformation list-exports --output text \
-    --query "Exports[?Name=='dap-network-"$CLIENT_SUFFIX"-ip'].Value"`
+    --query "Exports[?Name=='dap-network-"$CLIENT_NAME"-ip'].Value"`
 
 subnets=`aws cloudformation list-exports \
     --query "Exports[?starts_with(Name, 'dap-network-subnet-')].[Name, Value]" \
@@ -113,6 +113,8 @@ echo "$cluster_definition" | eksctl create cluster -f /dev/stdin --dry-run
 # Variables interpolated by envsubst in json policy must be exported beforehand, e.g. export new=color. 
 envsubst < workflow/aws/iam/node-policy.json | aws iam create-policy \
     --policy-name $new-dap-node-$REGION --policy-document file:///dev/stdin
+envsubst < workflow/aws/iam/installer-policy.json | aws iam create-policy \
+    --policy-name $new-dap-installer-$REGION --policy-document file:///dev/stdin
 if $DaP_INGRESS; then ./workflow/aws/external-dns.sh policy $new $REGION; fi
 echo "$cluster_definition" | eksctl create cluster -f /dev/stdin
 

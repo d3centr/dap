@@ -3,7 +3,12 @@ app=${1///}
 root=`git rev-parse --show-toplevel`
 # authenticate with cluster and export REGISTRY variable
 . $root/bootstrap/app-init.sh
-. $root/spark/$app/config/VERSIONS
+if [ -d $root/spark/$app ]; then
+    . $root/spark/$app/config/VERSIONS
+else
+    eval "`kubectl get cm -n spark $app-config \
+        -o \"jsonpath={.data['VERSIONS']}\"`"
+fi
 
 cat <<EOF | kubectl apply -f -
 apiVersion: batch/v1

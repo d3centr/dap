@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 import s3fs
 import logging
 from concurrent.futures._base import TimeoutError
-from dap.utils import eth_ip
+from dap.utils import eth_ip, describe_instance
 from dap.constants import EPOCH_LENGTH
 
 BATCH_LENGTH = 1000
@@ -57,6 +57,8 @@ def lookahead(epoch, source, event, conf):
         fromBlock = EPOCH_LENGTH * epoch,
         toBlock   = EPOCH_LENGTH * (1 + epoch) - 1
     ).get_all_entries()
+    # fails when a client goes down gracefully and could have missed events
+    describe_instance(conf['eth_client'])
     return events
 
 def process_batch(batch):
@@ -84,6 +86,8 @@ def job(thread, thread_index, epoch, conf, partitioner, early_stop=False):
             'toBlock': block_index + BATCH_LENGTH - 1, 
             'topics': topics
         })
+        # fails when a client goes down gracefully and could have missed events
+        describe_instance(conf['eth_client'])
         return batch
     
     def decode(batch, codec, abis):
@@ -119,7 +123,7 @@ def job(thread, thread_index, epoch, conf, partitioner, early_stop=False):
         end = start + EPOCH_LENGTH
         filename = thread_index
     w3 = Web3(Web3.WebsocketProvider(f"ws://{eth_ip(conf['eth_client'])}:8546", 
-        websocket_timeout=60, websocket_kwargs={'max_size': 20000000}))
+        websocket_timeout=90, websocket_kwargs={'max_size': 20000000}))
     for block_index in range(start, end, BATCH_LENGTH):
         logger.info(f'batch {block_index} - {block_index+BATCH_LENGTH-1} blocks')
 

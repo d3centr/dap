@@ -14,11 +14,11 @@ from dap.constants import EPOCH_LENGTH
 from dap.events.etl import BATCH_LENGTH
 import dap.events.etl as etl
 
-def scan_factory(pool, slots=1):
+def scan_factory(pool, slots=5):
 
     @task(pool=pool, pool_slots=slots)
     def scan_factory(args):
-        conf = get_current_context()['dag_run'].conf
+        conf = get_current_context()['params']
         dapp, path = conf['dapp'], conf['path']
         epoch, sources = args['epoch'], deepcopy(args['sources'])
     
@@ -42,7 +42,7 @@ def scan_factory(pool, slots=1):
     return scan_factory
 
 def partitioner_input(args):
-    conf = get_current_context()['dag_run'].conf
+    conf = get_current_context()['params']
     epoch, bucket, path = args['epoch'], conf['bucket'], conf['path']
     sources = get_meta(bucket, path, f'{epoch}_sources', args['sources_dt'])
     return epoch, bucket, path, sources
@@ -80,7 +80,7 @@ def thread(pool, partitioner, slots=1):  # 10 pool slots  = 1 vCPU
 
     @task(pool=pool, pool_slots=slots)
     def thread(i, args):
-        conf = get_current_context()['dag_run'].conf
+        conf = get_current_context()['params']
         epoch, bucket, path = args['epoch'], conf['bucket'], conf['path']
         shard = get_shard(bucket, path, epoch, partitioner, args, i)
         etl.job(shard, i, epoch, conf, partitioner=partitioner)
@@ -90,12 +90,10 @@ def thread(pool, partitioner, slots=1):  # 10 pool slots  = 1 vCPU
 
 def dapp(dapp, 
     prefix, 
+    schedule_interval=None,
     shards=0,
     thread_deciCPU=2,
     dag_kwargs={
-        'schedule_interval': None,
-        'start_date': days_ago(2),
-        'catchup': False,
         'default_args': {
             'retries': 1
         }
@@ -112,7 +110,10 @@ def dapp(dapp,
             'eth_client': eth_client
         },
         tags=['job', prefix],
+        schedule_interval=schedule_interval,
         max_active_runs=1,
+        start_date=days_ago(1),
+        catchup=False,
         **dag_kwargs
     )
     def dap_Event():

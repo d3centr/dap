@@ -13,8 +13,7 @@ By default, Argo CD will pull and apply live app changes from `https://github.co
 
 --------------------------------------------------------------------------------------------------
 
-*Optional*: to set up app installs from a private repo before a cluster bootstrap,\
-review configuration of `REPO/PRIVATE` and `.../SSH_KEY_NAME` in [DaP](/DaP).\
+*Optional*: to set up app installs from a private repo before a cluster bootstrap, review configuration of `REPO/SSH_KEY_NAME` in [DaP](/DaP).\
 You can always follow Argo CD [instructions](https://argo-cd.readthedocs.io/en/stable/user-guide/private-repositories/) to set up private repos later and manually.
 
 0. **Requirements**: admin rights in the cloud + a bash shell with docker and aws clis configured locally.\

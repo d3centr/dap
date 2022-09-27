@@ -1,0 +1,41 @@
+exports:
+  all:
+    global:
+      spark:
+        v3_2_0:
+          # match packaged hadoop versions with SPARK_VERSION: 3.2.0
+          hadoopVersion: 3.3.1
+          # https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-aws Compile Dependencies
+          # s3 support library: 1.11.901 in hadoop 3.3.1
+          awsSdkVersion: 1.11.901
+          # Delta: see https://docs.delta.io/latest/releases.html for Spark version compatibility
+          deltaCoreVersion: 1.1.0
+          hiveVersion: 2.3.9
+          deltaHiveVersion: 0.5.0
+      profiles:
+        base:
+          baseBuild: PreSync
+          depBuild: PreSync
+          coldBuild: PreSync
+          hotBuild: PreSync
+        dep:
+          baseBuild: Skip
+          depBuild: PreSync
+          coldBuild: PreSync
+          hotBuild: PreSync
+        default:
+          baseBuild: Skip
+          depBuild: Skip
+          coldBuild: PreSync
+          hotBuild: PreSync
+        hot:
+          baseBuild: Skip
+          depBuild: Skip
+          coldBuild: Skip
+          hotBuild: PreSync
+        skip:
+          baseBuild: Skip
+          depBuild: Skip
+          coldBuild: Skip
+          hotBuild: Skip
+

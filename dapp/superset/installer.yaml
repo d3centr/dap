@@ -1,13 +1,37 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: superset-dapp-install-
+  generateName: install-
   namespace: superset
 spec:
   serviceAccountName: superset-dapp-installer 
-  entrypoint: superset
+  entrypoint: loop
+  arguments:
+    parameters:
+    - name: dapps
+    - name: kubectl
   templates:
-  - name: superset
+
+  - name: loop
+    steps:
+    - - name: superset
+        template: dapp
+        when: '{{item.apps}} =~ "superset"'
+        arguments:
+          parameters:
+          - name: dapp
+            value: "{{item.dapp}}"
+          - name: repo
+            value: "{{item.repo}}"
+          - name: path
+            value: "{{item.path}}"
+          - name: branch
+            value: "{{item.branch}}"
+          - name: kubectl
+            value: "{{workflow.parameters.kubectl}}"
+        withParam: "{{workflow.parameters.dapps}}"
+
+  - name: dapp
     inputs:
       parameters:
       - name: dapp
@@ -15,7 +39,7 @@ spec:
       - name: path
       - name: branch
       - name: kubectl
-    container:
+    script:
       image: "bitnami/kubectl:{{inputs.parameters.kubectl}}"
       env:
       - name: "{{inputs.parameters.dapp}}_DEPLOY_KEY"
@@ -24,21 +48,20 @@ spec:
             name: "{{inputs.parameters.dapp}}-deploy-key"
             key: key
             optional: true
-      command: ["bash", "-c"]
-      args:
-      - kubectl exec -n superset svc/superset -- bash -c '
-            echo "'"${{inputs.parameters.dapp}}_DEPLOY_KEY"'" > /tmp/{{inputs.parameters.dapp}}-key;
-            chmod 400 /tmp/{{inputs.parameters.dapp}}-key
-        ';
+      command: [bash]
+      source: |
+        kubectl exec -n superset svc/superset -- bash -c '
+            dapp={{inputs.parameters.dapp}}
 
-        kubectl exec -n superset svc/superset -- bash -c "
-            rm -rf /tmp/{{inputs.parameters.dapp}};
+            echo "'"${{inputs.parameters.dapp}}_DEPLOY_KEY"'" > /tmp/$dapp-key
+            chmod 400 /tmp/$dapp-key
 
-            GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i /tmp/{{inputs.parameters.dapp}}-key'
-            git clone --single-branch --depth 1 --branch {{inputs.parameters.branch}} 
-                {{inputs.parameters.repo}} /tmp/{{inputs.parameters.dapp}};
+            rm -rf /tmp/$dapp
+            GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /tmp/$dapp-key" \
+            git clone --single-branch --depth 1 --branch {{inputs.parameters.branch}} \
+                {{inputs.parameters.repo}} /tmp/$dapp
 
-            superset import-dashboards -u dap -p 
-                /tmp/{{inputs.parameters.dapp}}/{{inputs.parameters.path}}/superset/dashboards.zip
-        "
+            superset import-dashboards -u admin \
+                -p /tmp/$dapp/{{inputs.parameters.path}}/superset/$dapp/dashboards.zip
+        '
 

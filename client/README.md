@@ -4,18 +4,26 @@
 `./stack.sh network.yaml`
 
 ### Deploy Prysm
-`./stack.sh prysm.yaml` (`InstanceSize=large` default)
+`./stack.sh prysm.yaml` (`InstanceSize=xlarge` default)
 
-On a first deployment, database won't be backed in s3. You might want to:
+On a **first deployment**, database won't be backed in s3. You might want to:
 1) add `InstanceSize=2xlarge` argument to the command above to speed up initial sync;
-2) wait for this client to sync.
+2) wait for Prysm to sync until the merge before deploying the execution client.
+
+On a **subsequent launch** or update, you might want to:
+1) add `EnableBackup=true` argument to sync blockchain data between client and backup before the former starts;
+2) scale down instance size to `large` if you caught up with the chain and wish to simply keep it in sync;
+3) set `EnableBackup=false` to avoid automated backup sync whenever a spot instance reboots (causing downtime).
+
+*all these parameters won't have any effect if the instance size isn't explicitly changed at the same time*
 
 > If you wish to deploy Lighthouse beacon client instead, you need to bring your own knowledge, e.g:\
-Lighthouse is not going to go through the initial sync without an execution client, etc...
+Lighthouse does not sync before the merge without an execution client, etc...
+
 ### Deploy Geth
 `./stack.sh geth.yaml`
 - the same command can update an existing stack, Key=value parameters are optional:\
-`./stack.sh geth.yaml InstanceSize=xlarge BeaconClient=prysm NetRestrict=false  # showing default values`
+`./stack.sh geth.yaml InstanceSize=xlarge BeaconClient=prysm EnableBackup=false  # showing default values`
 
 **Caveat**: change `InstanceSize` to force a version upgrade in a running client.\
 You will always be prompted to confirm the version of a client to install.

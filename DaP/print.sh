@@ -5,7 +5,7 @@ echo "DaP ~ ENV: $DaP_ENV"
 echo
 echo "    - Configuration Keys -"
 echo
-for key in `find -E $DaP_ENV -type d -regex '.*/[A-Z_]+'`; do
+for key in `find $DaP_ENV -type d -regex '.*/[A-Z_]*'`; do
     path=`sed "s/$DaP_ENV\///" <<< $key`
     KEY=`egrep -o [A-Z_]+$ <<< $key`
     override=`eval "echo \\$DaP_$KEY"`
@@ -15,7 +15,7 @@ for key in `find -E $DaP_ENV -type d -regex '.*/[A-Z_]+'`; do
 done
 echo
 echo "    - Configuration Files -"
-for path in `find -E $DaP_ENV -type d -regex '.*/[a-z-]+'`; do
+for path in `find $DaP_ENV -type d -regex '.*/[a-z-]*'`; do
     subpath=`sed "s/$DaP_ENV\///" <<< $path`
 
     [[ -f $path/default || -f $path/var ]] && {

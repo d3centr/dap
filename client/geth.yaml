@@ -12,15 +12,33 @@ Parameters:
   InstanceSize:
     Type: String
     Default: xlarge
+
   HotVolumeSize:
     Type: Number
-    Default: 350
+    Default: 400
+  HotVolumeThroughput:
+    Type: Number
+    Default: 125
+  HotVolumeIops:
+    Type: Number
+    Default: 3000
+
   ColdVolumeSize:
     Type: Number
     Default: 450
+  ColdVolumeThroughput:
+    Type: Number
+    Default: 125
+  ColdVolumeIops:
+    Type: Number
+    Default: 3000
+
   JsonWebToken:
     Type : 'AWS::SSM::Parameter::Value<String>'
     Default: /cfn/dap/prysm/mainnet/jwt
+  EnableBackup:
+    Type: String
+    Default: false
   NetRestrict:
     Type: String
     Default: false
@@ -33,9 +51,17 @@ Resources:
         Client: !Ref Client
         Build: !Ref Build
         InstanceSize: !Ref InstanceSize
+
         HotVolumeSize: !Ref HotVolumeSize
+        HotVolumeThroughput: !Ref HotVolumeThroughput
+        HotVolumeIops: !Ref HotVolumeIops
+
         ColdVolumeSize: !Ref ColdVolumeSize
+        ColdVolumeThroughput: !Ref ColdVolumeThroughput
+        ColdVolumeIops: !Ref ColdVolumeIops
+
         JsonWebToken: !Ref JsonWebToken
+        EnableBackup: !Ref EnableBackup
         NetRestrict: !Ref NetRestrict
         SecurityGroups: !Join 
           - ','

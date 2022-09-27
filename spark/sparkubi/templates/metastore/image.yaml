@@ -1,9 +1,11 @@
+{{ $profile := tpl ".Values.global.profiles.{{ .Values.global.profile }}" . }}
+{{ $depBuild := tpl (printf "{{ %s.depBuild }}" $profile) . }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: metastore-image
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    argocd.argoproj.io/hook: {{ $depBuild }}
     helm.sh/hook-weight: "-1"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
@@ -14,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: metastore-image
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
         args:
         - "--context=/mnt"
         - "--destination={{ .Values.global.registry }}:metastore"
@@ -36,35 +38,43 @@ kind: ConfigMap
 metadata:
   name: metastore-dockerfile
   annotations:
-    argocd.argoproj.io/hook: {{ .Values.global.depBuild }}
+    argocd.argoproj.io/hook: {{ $depBuild }}
     helm.sh/hook-weight: "-1"
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   Dockerfile: |
     FROM openjdk:11-jre-slim
 
-    ARG VERSION=2.3.9
+    {{ $spark := tpl ".Values.global.spark.{{ .Values.global.spark_version }}" . }}
+    {{ $hive := tpl (printf "{{ %s.hiveVersion }}" $spark) . }}
+    ARG VERSION={{ $hive }}
     ARG TAR=apache-hive-$VERSION-bin.tar.gz
     ARG HIVE_URL=https://dlcdn.apache.org/hive/hive-$VERSION/$TAR
-    ARG HADOOP={{ .Values.global.hadoopVersion }}
-    ARG AWS={{ .Values.global.awsSdkVersion }}
+    {{ $hadoop := tpl (printf "{{ %s.hadoopVersion }}" $spark) . }}
+    ARG HADOOP={{ $hadoop }}
+    {{ $aws := tpl (printf "{{ %s.awsSdkVersion }}" $spark) . }}
+    ARG AWS={{ $aws }}
     
     ENV HIVE_HOME=/opt/hive
     ENV PATH=$HIVE_HOME/bin:$PATH
     ENV HADOOP_HOME=/opt/hadoop-$HADOOP
 
-    RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && \
+    RUN apt-get update && apt-get install -y curl && \
+        apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
         curl -O $HIVE_URL && tar -xvf $TAR && rm $TAR && \
         mv apache-hive-$VERSION-bin $HIVE_HOME && \
         curl -O https://dlcdn.apache.org/hadoop/common/hadoop-$HADOOP/hadoop-$HADOOP.tar.gz && \
-        tar -xvf hadoop-$HADOOP.tar.gz && rm hadoop-$HADOOP.tar.gz && mv hadoop-$HADOOP /opt && \
-        apt-get autoremove -y curl
+        tar -xvf hadoop-$HADOOP.tar.gz && rm hadoop-$HADOOP.tar.gz && mv hadoop-$HADOOP /opt
 
     ARG DEST=$HIVE_HOME/lib/
     ARG MVN=https://repo1.maven.org/maven2
     ADD $MVN/org/apache/hadoop/hadoop-aws/$HADOOP/hadoop-aws-$HADOOP.jar $DEST
     ADD $MVN/com/amazonaws/aws-java-sdk-bundle/$AWS/aws-java-sdk-bundle-$AWS.jar $DEST
     ADD https://jdbc.postgresql.org/download/postgresql-42.3.1.jar $DEST
+    {{ $deltaHive := tpl (printf "{{ %s.deltaHiveVersion }}" $spark) . }}
+    ARG CONN=https://github.com/delta-io/connectors/releases/download/v{{ $deltaHive }}
+    RUN cd $DEST && \
+        curl -OL $CONN/delta-hive-assembly_{{ .Values.global.scalaVersion }}-{{ $deltaHive }}.jar
     
     WORKDIR $HIVE_HOME
 

@@ -24,7 +24,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 6,
-  "iteration": 1664183591484,
+  "iteration": 1664434733670,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -159,7 +159,7 @@
       "gridPos": {
         "h": 6,
         "w": 5,
-        "x": 11,
+        "x": 10,
         "y": 0
       },
       "id": 60,
@@ -235,7 +235,7 @@
       "gridPos": {
         "h": 3,
         "w": 3,
-        "x": 16,
+        "x": 15,
         "y": 0
       },
       "id": 26,
@@ -347,25 +347,42 @@
       "type": "stat"
     },
     {
-      "description": "",
       "fieldConfig": {
         "defaults": {
-          "decimals": 0,
-          "displayName": "",
-          "mappings": [
-            {
-              "options": {
-                "match": "null",
-                "result": {
-                  "color": "green",
-                  "index": 0,
-                  "text": "0"
-                }
-              },
-              "type": "special"
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisGridShow": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
-          ],
-          "max": 10,
+          },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -374,43 +391,33 @@
                 "value": null
               },
               {
-                "color": "#EAB839",
-                "value": 3
-              },
-              {
-                "color": "orange",
-                "value": 6
-              },
-              {
                 "color": "red",
-                "value": 9
+                "value": 80
               }
             ]
           },
-          "unit": "short"
+          "unit": "decbytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 20,
+        "w": 5,
+        "x": 19,
         "y": 2
       },
-      "id": 40,
+      "id": 64,
       "options": {
-        "displayMode": "lcd",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "last"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
         },
-        "showUnfilled": true
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
-      "pluginVersion": "",
       "targets": [
         {
           "datasource": {
@@ -418,28 +425,14 @@
             "uid": "PBFA97CFB590B2093"
           },
           "exemplar": true,
-          "expr": "rate(log_entries_total{job=\"$node_job\", level=\"error\"}[10m]) * 100",
-          "instant": false,
+          "expr": "bcnode_disk_beaconchain_bytes_total{job=\"prysm-nodes\"}",
           "interval": "",
-          "legendFormat": "Errors",
+          "legendFormat": "{{ instance }}",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "exemplar": true,
-          "expr": "rate(log_entries_total{job=\"$node_job\", level=\"warning\"}[10m]) * 100",
-          "hide": false,
-          "instant": false,
-          "interval": "",
-          "legendFormat": "Warnings",
-          "refId": "B"
         }
       ],
-      "title": "10m Logs",
-      "type": "bargauge"
+      "title": "Beacon Chain Disk Size",
+      "type": "timeseries"
     },
     {
       "fieldConfig": {
@@ -469,7 +462,7 @@
       "gridPos": {
         "h": 3,
         "w": 2,
-        "x": 16,
+        "x": 15,
         "y": 3
       },
       "id": 34,
@@ -526,7 +519,7 @@
       "gridPos": {
         "h": 8,
         "w": 7,
-        "x": 11,
+        "x": 10,
         "y": 6
       },
       "id": 66,
@@ -571,37 +564,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "blue",
-            "mode": "fixed"
-          },
-          "custom": {
-            "axisGridShow": false,
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "mode": "thresholds"
           },
           "mappings": [],
           "thresholds": {
@@ -616,29 +579,32 @@
                 "value": 80
               }
             ]
-          },
-          "unit": "decbytes"
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
+        "h": 3,
         "w": 5,
         "x": 19,
         "y": 6
       },
-      "id": 64,
+      "id": 68,
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
+        "textMode": "auto"
       },
+      "pluginVersion": "",
       "targets": [
         {
           "datasource": {
@@ -646,14 +612,14 @@
             "uid": "PBFA97CFB590B2093"
           },
           "exemplar": true,
-          "expr": "bcnode_disk_beaconchain_bytes_total{job=\"prysm-nodes\"}",
+          "expr": "up{job=\"prysm-nodes\"}",
           "interval": "",
           "legendFormat": "{{ instance }}",
           "refId": "A"
         }
       ],
-      "title": "Beacon Chain Disk Size",
-      "type": "timeseries"
+      "title": "Up",
+      "type": "stat"
     },
     {
       "fieldConfig": {
@@ -744,12 +710,25 @@
       "type": "timeseries"
     },
     {
+      "description": "10m rate",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
+          "decimals": 0,
+          "displayName": "",
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "0"
+                }
+              },
+              "type": "special"
+            }
+          ],
+          "max": 10,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -758,34 +737,42 @@
                 "value": null
               },
               {
+                "color": "#EAB839",
+                "value": 3
+              },
+              {
+                "color": "orange",
+                "value": 6
+              },
+              {
                 "color": "red",
-                "value": 80
+                "value": 9
               }
             ]
-          }
+          },
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 3,
-        "w": 5,
-        "x": 19,
-        "y": 11
+        "h": 5,
+        "w": 7,
+        "x": 17,
+        "y": 9
       },
-      "id": 68,
+      "id": 40,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
+        "displayMode": "lcd",
+        "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showUnfilled": true,
+        "text": {}
       },
       "pluginVersion": "",
       "targets": [
@@ -795,14 +782,30 @@
             "uid": "PBFA97CFB590B2093"
           },
           "exemplar": true,
-          "expr": "up{job=\"prysm-nodes\"}",
+          "expr": "rate(log_entries_total{job=\"$node_job\", level=\"error\"}[10m]) * 100",
+          "format": "time_series",
+          "instant": false,
           "interval": "",
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "{{ prefix }} | {{ level }}",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "exemplar": true,
+          "expr": "rate(log_entries_total{job=\"$node_job\", level=\"warning\"}[10m]) * 100",
+          "format": "time_series",
+          "hide": false,
+          "instant": false,
+          "interval": "",
+          "legendFormat": "{{ prefix }} | {{ level }}",
+          "refId": "B"
         }
       ],
-      "title": "Up",
-      "type": "stat"
+      "title": "Logs",
+      "type": "bargauge"
     },
     {
       "fieldConfig": {
