@@ -5,7 +5,7 @@ DaP is an open platform to ingest, process and analyze Web3 data.
 
 ### Features
 - __Embedded Blockchain__ makes DaP fast and self-sufficient.
-- __Data Pipeline__ from extraction to vizualisation: you develop it, DaP builds and runs it.
+- __Data Pipeline__ from extraction to visualization: you develop it, DaP builds and runs it.
 - __SQL Analytics__ powered by [SparkUBI](./spark/sparkubi): precise off-chain calculations at scale on Spark engine.
 - and more...
     - __Token Prices__ at the historical live exchange rate on Uniswap;
@@ -25,8 +25,6 @@ While they both serve queries, OLAP requires a different architecture for analyt
 Like any OLAP solution, DaP trades off multi-tenancy for scale and responsiveness for bandwidth, i.e.
 - APIs are not designed to be exposed publicly;
 - best latency such a system can achieve is near real-time (seconds vs milliseconds in OLTP).
-
-> Apache Flink boasts a high throughput and low event latency runtime. A proof of concept is planned to determine whether DaP should invest into Flink to complement Spark.
 
 ## Stack
 DaP runs in AWS on a Data Lakehouse architecture, enabling BI and ML in a single system supporting ACID transactions. Much of the development work has gone into the integration, specialization and automation of awesome open-source projects.
