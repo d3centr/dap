@@ -13,9 +13,12 @@ Parameters:
     Type: String
     Default: xlarge
 
+  # Aim to keep at least 50GB free as a safe margin:
+  # a client crash due to insufficient disk space can silently corrupt the db,
+  # e.g. "failed to get logs for block #15890861" in eth_getLogs.
   HotVolumeSize:
     Type: Number
-    Default: 400
+    Default: 450
   HotVolumeThroughput:
     Type: Number
     Default: 125
@@ -25,7 +28,7 @@ Parameters:
 
   ColdVolumeSize:
     Type: Number
-    Default: 450
+    Default: 500
   ColdVolumeThroughput:
     Type: Number
     Default: 125
