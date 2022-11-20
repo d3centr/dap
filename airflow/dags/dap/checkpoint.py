@@ -13,7 +13,12 @@ KEY_PREFIX = '_HEAD'
 
 logger = logging.getLogger('airflow.task')
 
-def checkpoint_override(epoch, key, head, bucket):
+def path_head(s3, bucket, head_paths, epoch):
+    return min([int(
+        s3.Object(bucket, f'{path}__{epoch}').get()['Body'].read()
+    ) for path in head_paths])
+
+def checkpoint_override(epoch, key, head, bucket, head_paths=[]):
     s3, s3_fs = boto3.resource('s3'), s3fs.S3FileSystem()
 
     def load(key):
@@ -25,16 +30,27 @@ def checkpoint_override(epoch, key, head, bucket):
             return 0
 
     def is_client_syncing():
-        if head is not None:
+        if not head_paths:
             assert(_last_block <= head), (
                 f'Chain head ({head}) is lower than epoch {epoch} checkpoint'
                 f' ({_last_block}). Is your client syncing?'
             )
 
+    def log_no_such_path(head_paths):
+        logger.warning(f'at least one of "{head_paths}" does not exist')
+        logger.info('dag cannot proceed before dependencies')
+
     def iterate(epoch):
         epoch += 1
         key = f'{key_prefix}__{epoch}'
         _last_block = load(key)
+        if head_paths:
+            try:
+                head = path_head(s3, bucket, head_paths, epoch)
+            except s3.meta.client.exceptions.NoSuchKey:
+                log_no_such_path(head_paths)
+                epoch, head = None, None
+            return epoch, _last_block, head
         is_client_syncing()
         return epoch, _last_block
 
@@ -49,38 +65,44 @@ def checkpoint_override(epoch, key, head, bucket):
             logger.info(
                 f'overriding epoch {epoch} with next mutable period {mutable_epoch}')
             epoch = mutable_epoch
+            if head_paths:  # head must be updated with the epoch in a dependent dag
+                try:
+                    head = path_head(s3, bucket, head_paths, epoch)
+                except s3.meta.client.exceptions.NoSuchKey:
+                    log_no_such_path(head_paths)
+                    epoch = None
             key = f'{key_prefix}__{epoch}'
 
     _last_block = load(key)
     if _last_block > 0:
-        if head is None:
-            logger.info(f'last load of epoch {epoch} occurred at block {_last_block}')
-        else:
-            logger.info(
-                f'last load of epoch {epoch} started {head - _last_block} block(s) ago')
+        logger.info(
+            f'last load of epoch {epoch} started {head - _last_block} block(s) ago')
     is_client_syncing()
 
-    while _last_block >= EPOCH_LENGTH * (epoch + MUTABLE_EPOCHS):
+    while epoch is not None and _last_block >= EPOCH_LENGTH * (epoch + MUTABLE_EPOCHS):
         logger.info(
             f'epoch {epoch} persisted at least {MUTABLE_EPOCHS} epochs ahead: skip')
-        epoch, _last_block = iterate(epoch)
+        if head_paths:
+            epoch, _last_block, head = iterate(epoch)
+        else:
+            epoch, _last_block = iterate(epoch)
 
-    # Chain head relevant in extraction dags relying on a blockchain client: 
-    # head is None when a dag depends on persisted datasets.
-    # -> take a checkpoint substitute to know if the epoch is mutable in dependent dags
-    block_height = _last_block if head is None else head
     mutable_period_length = EPOCH_LENGTH * MUTABLE_EPOCHS
+    while (epoch is not None and 
     # Conditions to load latest data when current mutable period is complete:
-    #     [                   = is epoch mutable?                                 ]
-    #     [                   = confirmation blocks      ] 
-    #                     [   = last block in epoch      ]
-    while (block_height - ((epoch + 1) * EPOCH_LENGTH - 1) < mutable_period_length and 
+    # [              = is epoch mutable?                               ]
+    # [              = confirmation blocks    ] 
+    #          [   = last block in epoch      ]
+        head - ((epoch + 1) * EPOCH_LENGTH - 1) < mutable_period_length and 
     # [       = is epoch complete?                              ]
     # [       = blocks from epoch start        ]
     #                 [  = end previous epoch  ]
         _last_block - (epoch * EPOCH_LENGTH - 1) >= EPOCH_LENGTH):
         logger.info(f"epoch {epoch} is in the latest mutable period and complete: next")
-        epoch, _last_block = iterate(epoch)
+        if head_paths:
+            epoch, _last_block, head = iterate(epoch)
+        else:
+            epoch, _last_block = iterate(epoch)
 
     return epoch
 
@@ -101,26 +123,21 @@ def nested_init(bucket, key_prefix=KEY_PREFIX, head_paths=[]):
     epoch = params.get('epoch', start_epoch(sources) if sources else 0)
 
     if head_paths:
-        last_block = None
+        s3 = boto3.resource('s3')
+        last_block = path_head(s3, bucket, head_paths, epoch)
     else:
         w3 = Web3(Web3.HTTPProvider(
             f"http://{eth_ip(params['eth_client'])}:8545"))
         last_block = w3.eth.block_number
 
     key = f"{params['path']}/{key_prefix}__{epoch}"
-    overridden_epoch = checkpoint_override(epoch, key, last_block, bucket)
+    overridden_epoch = checkpoint_override(epoch, key, last_block, bucket, 
+        head_paths=head_paths)
 
     if head_paths:
-        s3 = boto3.resource('s3')
-
-        def path_head(epoch):
-            return min([int(
-                s3.Object(bucket, f'{path}__{epoch}').get()['Body'].read()
-            ) for path in head_paths])
-
         # replace last block with min chain head when dependencies were persisted
         try:
-            last_block = path_head(overridden_epoch)
+            last_block = path_head(s3, bucket, head_paths, overridden_epoch)
             logger.info(f'head from paths of epoch override: {last_block}')
         except s3.meta.client.exceptions.NoSuchKey:
             logger.warning(f'at least one of "{head_paths}" does not exist')

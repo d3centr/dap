@@ -217,26 +217,36 @@ def none_path_check(args):
     assert(args['epoch'] is None)
 
 @task()
-def mutable_head_path_test():
+def mutable_head_path_tests():
     EPOCH = 526
     bucket, path = s3_params()
-    key = f'{path}/mutable_path'
+    key, reload_key = f'{path}/mutable_path', f'{path}/reload_path'
     block = (EPOCH + 1) * EPOCH_LENGTH
     s3 = boto3.resource('s3')
+
     # checkpoint next epoch first block: epoch is complete but mutable
     s3.Object(bucket, f'{key}__{EPOCH}').put(Body=str(block))
     # adding a block to differentiate logs, next epoch still incomplete
     s3.Object(bucket, f'{key}__{EPOCH + 1}').put(Body=str(block + 1))
+    s3.Object(bucket, f'{reload_key}__{EPOCH}').put(Body=str(block + REPROC_LIMIT))
+
     conf = get_current_context()['params']
     conf.update({'epoch': EPOCH})
     # dag and dependency checkpoints in one file only to ease test
-    args = nested_init(bucket, key_prefix='mutable_path', head_paths=[key])
+    next_args = nested_init(bucket, key_prefix='mutable_path', head_paths=[key])
+    reload_args = nested_init(bucket, key_prefix='mutable_path', head_paths=[reload_key])
     conf.pop('epoch')  # clean context
-    actual = args['epoch']
-    print(f'ACTUAL: {actual}')
+
+    actual = next_args['epoch']
+    print(f'ACTUAL next: {actual}')
     expected = EPOCH + 1
-    print(f'EXPECTED: {expected}')
+    print(f'EXPECTED next: {expected}')
     assert(actual == expected)
+
+    actual = reload_args['epoch']
+    print(f'ACTUAL reload: {actual}')
+    print(f'EXPECTED reload: {EPOCH}')
+    assert(actual == EPOCH)
 
 @dag(
     schedule_interval=None,
@@ -264,7 +274,7 @@ def dap_Checkpoint_ok():
     dapp_init_check(dapp_args)
     mixed_init_check(mixed_args)
     # mutable_head_path_test() also relying on custom context
-    mixed_args >> mutable_head_path_test()
+    mixed_args >> mutable_head_path_tests()
 
     # last_block (chain head) within epoch to test immutability checkpoint below
     mutable_args = {'epoch': 444, 'last_block': 13319999}
