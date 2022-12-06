@@ -12,6 +12,9 @@ Parameters:
   InstanceSize:
     Type: String
     Default: xlarge
+  Spot:
+    Type: String
+    Default: false
 
   # Aim to keep at least 50GB free as a safe margin:
   # a client crash due to insufficient disk space can silently corrupt the db,
@@ -46,6 +49,16 @@ Parameters:
     Type: String
     Default: false
 
+  Pyd:
+    Type: String
+    Default: false
+  Pyd2:
+    Type: String
+    Default: false
+  SinkRegion:
+    Type: String
+    Default: us-east-2
+
 Resources:
   Stack:
     Type: AWS::CloudFormation::Stack
@@ -54,6 +67,7 @@ Resources:
         Client: !Ref Client
         Build: !Ref Build
         InstanceSize: !Ref InstanceSize
+        Spot: !Ref Spot
 
         HotVolumeSize: !Ref HotVolumeSize
         HotVolumeThroughput: !Ref HotVolumeThroughput
@@ -66,6 +80,11 @@ Resources:
         JsonWebToken: !Ref JsonWebToken
         EnableBackup: !Ref EnableBackup
         NetRestrict: !Ref NetRestrict
+        
+        Pyd: !Ref Pyd
+        Pyd2: !Ref Pyd2
+        SinkRegion: !Ref SinkRegion
+
         SecurityGroups: !Join 
           - ','
           - - !ImportValue dap-network-listener-sg

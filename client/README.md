@@ -13,9 +13,11 @@ On a **first deployment**, database won't be backed in s3. You might want to:
 On a **subsequent launch** or update, you might want to:
 1) add `EnableBackup=true` argument to sync blockchain data between client and backup before the former starts;
 2) scale down instance size to `large` if you caught up with the chain and wish to simply keep it in sync;
-3) set `EnableBackup=false` to avoid automated backup sync whenever a spot instance reboots (causing downtime).
+3) set `EnableBackup=false` to avoid automated backup sync when restarting an instance (causing downtime).
 
-*all these parameters won't have any effect if the instance size isn't explicitly changed at the same time*
+*Note*
+- When a single client is out-of-sync, both consensus and execution must still run on an InstanceSize >= xlarge (default) to catch up with the chain.
+- Parameter updates are not applied when the instance size isn't explicitly changed at the same time, i.e. you need a boostrap to change a configuration and better to be explicit when requesting a reboot.
 
 > If you wish to deploy Lighthouse beacon client instead, you need to bring your own knowledge, e.g:\
 Lighthouse does not sync before the merge without an execution client, etc...
@@ -37,7 +39,10 @@ sudo su  # get rights to access system logs
 cat /var/log/cfn-init.log  # shows how bootstrap steps went
 cat /var/log/bootstrap.log  # see logs inside those steps (debug)
 journalctl -u client -fo cat  # watch client logs
-geth attach /mnt/data/mainnet/geth.ipc  # open geth console
+# Geth only
+geth attach /mnt/data/mainnet/geth.ipc  # open console to run eth.syncing for status
+# Prysm only
+curl http://localhost:3500/eth/v1/node/syncing  # sync status
 ```
 **Tip**: in geth console, `debug.vmodule('rpc=5')` activates RPC debug logs.
 

@@ -11,12 +11,22 @@ hosted_zone () {
 
 upload_client_scripts () {
     local client=$1
+    local pyd=${2:-false}
+    local pyd2=${3:-false}
     local region=`aws configure get region`
     local account=`aws sts get-caller-identity --query Account --output text`
     aws s3 cp scripts/$client/client.sh \
         s3://dap-$region-client-$account/scripts/$client/client.sh
     aws s3 cp scripts/$client/install.sh \
         s3://dap-$region-client-$account/scripts/$client/install.sh
+    if $pyd; then
+        aws s3 cp scripts/daemons/pyd.py \
+            s3://dap-$region-client-$account/scripts/daemons/pyd.py
+    fi
+    if $pyd2; then
+        aws s3 cp scripts/daemons/pyd2.py \
+            s3://dap-$region-client-$account/scripts/daemons/pyd2.py
+    fi
 }
 
 generate_jwt () {
@@ -54,12 +64,20 @@ case $1 in
         params=()
         beacon_client=prysm
         network=mainnet
+        pyd=false
+        pyd2=false
         for param in ${@:2}; do
             IFS== read key value <<< "$param"
             if [ $key = BeaconClient ]; then
                 beacon_client=$value
             elif [ $key = Network ]; then
                 network=$value
+                params+=( $key=$value )
+            elif [ $key = Pyd ] && $value; then
+                pyd=true
+                params+=( $key=$value )
+            elif [ $key = Pyd2 ] && $value; then
+                pyd2=true
                 params+=( $key=$value )
             else
                 params+=( $key=$value )
@@ -83,7 +101,7 @@ case $1 in
         read version commit <<< `awk '$1=="('$REPLY')"{print $2,$3}' <<< "$versions"`
         echo "DaP ~ selected $version (commit $commit)"
 
-        upload_client_scripts geth
+        upload_client_scripts geth $pyd $pyd2
         build=geth-alltools-linux-amd64-$version-$commit
         aws cloudformation deploy --capabilities CAPABILITY_IAM \
             --stack-name dap-geth-mainnet --template-file geth.yaml \

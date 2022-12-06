@@ -15,10 +15,10 @@ $client \
     --datadir /mnt/data/${Network} \
     --datadir.ancient /mnt/freezer/${Network} \
     --http \
-    --http.api eth \
+    --http.api eth,debug \
     --http.addr 0.0.0.0 \
     --ws \
-    --ws.api eth \
+    --ws.api eth,debug \
     --ws.addr 0.0.0.0 \
     --netrestrict $netrestrict \
     --metrics \
