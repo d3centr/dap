@@ -7,3 +7,4 @@ bootstrap/**/argo/kustomization.yaml
 # vim swap file
 *.swp
 
+__pycache__

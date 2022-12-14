@@ -49,7 +49,7 @@ async def get_event():
                 records, start_buffer = [], time()
                 records.append(record)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     while True:
         loop.run_until_complete(get_event())
