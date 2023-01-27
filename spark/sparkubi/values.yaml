@@ -1,9 +1,10 @@
 build:
   baseImage: sparkubi-dep-{{ .Values.sparkVersion }}
 postgresql:
-  postgresqlUsername: hive
-  postgresqlPassword: hive
-  postgresqlDatabase: hive
+  auth:
+    username: hive
+    password: hive
+    database: hive
 chartmuseum:
   env:
     open:

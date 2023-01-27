@@ -11,7 +11,7 @@ dependencies:
   version: 0.1.0
   repository: file://../charts/build
 - name: postgresql
-  version: ~10.16.2
+  version: ~12.1.11
   repository: https://charts.bitnami.com/bitnami
 - name: chartmuseum
   version: ~3.9.1

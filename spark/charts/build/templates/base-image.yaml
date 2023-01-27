@@ -3,6 +3,64 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
+  name: {{ .Release.Name }}-dist-image
+  annotations:
+    argocd.argoproj.io/hook: {{ $baseBuild }}
+    helm.sh/hook-weight: "-3"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-dist-image
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: base-image
+        image: gcr.io/kaniko-project/executor:{{ .Values.global.kanikoVersion }}
+        args:
+        - "--context=/mnt"
+        - "--destination={{ .Values.global.registry }}:{{ .Release.Name }}-dist-{{ .Values.sparkVersion }}"
+        - "--cache=true"
+        resources:
+          requests:
+            cpu: 1800m
+            memory: 7Gi
+        volumeMounts:
+        - name: dockerfile
+          mountPath: /mnt
+      volumes:
+      - name: dockerfile
+        configMap:
+          name: {{ .Release.Name }}-dist-dockerfile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dist-dockerfile
+  annotations:
+    argocd.argoproj.io/hook: {{ $baseBuild }}
+    helm.sh/hook-weight: "-3"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  Dockerfile: |
+    # build Spark distribution from source
+    FROM openjdk:11-jdk-slim AS dist
+    ARG path=/tmp/spark-{{ .Values.sparkVersion }}
+
+    RUN apt-get update && apt-get install -y curl && rm -rf /var/cache/apt/*
+
+    RUN curl -L -o $path.tar.gz https://github.com/apache/spark/archive/v{{ .Values.sparkVersion }}.tar.gz && \
+        tar xzvf $path.tar.gz -C /tmp
+
+    RUN export MAVEN_OPTS="-Xss64m -Xmx2g -XX:ReservedCodeCacheSize=1g" && \
+        $path/dev/make-distribution.sh --name dap-dist \
+            -Phive \
+            -Phive-thriftserver \
+            -Pkubernetes
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
   name: {{ .Release.Name }}-base-image
   annotations:
     argocd.argoproj.io/hook: {{ $baseBuild }}
@@ -43,20 +101,7 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   Dockerfile: |
-    # build Spark distribution from source
-    FROM openjdk:11-jdk-slim AS dist
-    ARG path=/tmp/spark-{{ .Values.sparkVersion }}
-
-    RUN apt-get update && apt-get install -y curl && rm -rf /var/cache/apt/*
-
-    RUN curl -L -o $path.tar.gz https://github.com/apache/spark/archive/v{{ .Values.sparkVersion }}.tar.gz && \
-        tar xzvf $path.tar.gz -C /tmp
-
-    RUN export MAVEN_OPTS="-Xss64m -Xmx2g -XX:ReservedCodeCacheSize=1g" && \
-        $path/dev/make-distribution.sh --name dap-dist \
-            -Phive \
-            -Phive-thriftserver \
-            -Pkubernetes
+    FROM {{ .Values.global.registry }}:{{ .Release.Name }}-dist-{{ .Values.sparkVersion }} AS dist
 
     # base Spark image referencing artefacts built above
     FROM openjdk:11-jre-slim

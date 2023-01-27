@@ -17,11 +17,11 @@ data:
       </property>
       <property>
         <name>javax.jdo.option.ConnectionUserName</name>
-        <value>{{ .Values.postgresql.postgresqlUsername }}</value>
+        <value>{{ .Values.postgresql.auth.username }}</value>
       </property>
       <property>
         <name> javax.jdo.option.ConnectionPassword</name>
-        <value>{{ .Values.postgresql.postgresqlPassword }}</value>
+        <value>{{ .Values.postgresql.auth.password }}</value>
       </property>
       <property>
         <name>hive.metastore.uris</name>
